@@ -10,7 +10,7 @@ Before creating or pushing the public GitHub repository:
 - Browser/UI preview screenshots such as `*preview*.png`.
 - Local logs, caches, temporary files and `.env*`.
 
-## Before first commit
+## Before any public release
 1. Run:
    ```bash
    python3 scripts/check_public_release.py

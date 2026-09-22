@@ -1,5 +1,7 @@
 # Image MLX Lab
 
+> Project-wide agent/development rules: `docs/PROJECT_GUIDE.md`
+
 Image MLX Lab 是一个面向 Apple Silicon / MLX 的本地图像生成与编辑研究工作台。当前后端是 Qwen-Image-2.1；项目命名不绑定具体模型，后续可以继续接入其他 MLX 图像模型。
 
 当前主要测试机器：Apple M2 Max，32 GB Unified Memory。
@@ -44,19 +46,19 @@ runtime 目前仍是未正式发布的 Qwen-Image-2.1 feature branch，
 4-bit 下载 / 续传 / 校验：
 
 ```bash
-cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && .venv/bin/python scripts/setup_model.py --model qwen-image-2.1-mlx-4bit
+cd $HOME/Documents/image-mlx-lab && .venv/bin/python scripts/setup_model.py --model qwen-image-2.1-mlx-4bit
 ```
 
 8-bit 下载 / 续传 / 校验：
 
 ```bash
-cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && .venv/bin/python scripts/setup_model.py --model qwen-image-2.1-mlx-8bit
+cd $HOME/Documents/image-mlx-lab && .venv/bin/python scripts/setup_model.py --model qwen-image-2.1-mlx-8bit
 ```
 
 只重建运行环境、不下载模型：
 
 ```bash
-cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && .venv/bin/python scripts/setup_model.py --runtime-only
+cd $HOME/Documents/image-mlx-lab && .venv/bin/python scripts/setup_model.py --runtime-only
 ```
 
 Hugging Face 本地下载支持未完成文件续传。运行时源码放在 `worktrees/mlx-serve`。
@@ -66,13 +68,13 @@ Hugging Face 本地下载支持未完成文件续传。运行时源码放在 `wo
 4-bit：
 
 ```bash
-cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && ./scripts/start_server.sh 4bit
+cd $HOME/Documents/image-mlx-lab && ./scripts/start_server.sh 4bit
 ```
 
 8-bit：
 
 ```bash
-cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && ./scripts/start_server.sh 8bit
+cd $HOME/Documents/image-mlx-lab && ./scripts/start_server.sh 8bit
 ```
 
 服务器只绑定 `127.0.0.1:11234`，不会向局域网开放。
@@ -82,7 +84,7 @@ cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && ./scripts/start_server.sh 8
 快速冒烟测试：
 
 ```bash
-cd $HOME/Documents/AI-Lab/qwen-image-2.1-mlxserve && \
+cd $HOME/Documents/image-mlx-lab && \
 .venv/bin/python scripts/generate.py \
   --prompt "一只红狐狸站在新雪中，清晨自然光，写实摄影" \
   --size 512x512 --steps 4 --seed 42
