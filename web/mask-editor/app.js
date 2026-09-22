@@ -187,7 +187,7 @@ async function refreshAssets(){
 }
 function renderAssets(){
   const box=$("assetGallery"),filter=$("assetFilter").value;box.innerHTML="";
-  const list=assets.filter(a=>filter==="all"||a.kind===filter);
+  const list=assets.filter(a=>filter==="all"||(filter==="final"&&a.kind!=="intermediate")||a.kind===filter);
   if(!list.length){box.innerHTML="<div class='fileInfo'>暂无图片</div>";return}
   list.forEach(a=>{
     const card=document.createElement("div");card.className="assetCard"+(editorSource?.url===a.url?" active":"");
@@ -199,7 +199,7 @@ function renderAssets(){
     ops.append(dl,del);card.append(img,meta,ops);card.onclick=()=>openEditorAsset(a);box.append(card);
   });
 }
-function kindLabel(k){return k==="loaded"?"载入":k==="edited"?"编辑":"生成"}
+function kindLabel(k){return k==="loaded"?"载入":k==="edited"?"编辑":k==="intermediate"?"中间/原始AI":"生成"}
 function formatBytes(n){if(!n)return "—";return n>1048576?(n/1048576).toFixed(1)+"MB":Math.round(n/1024)+"KB"}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
 $("assetFilter").onchange=renderAssets;$("refreshAssets").onclick=refreshAssets;

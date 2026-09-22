@@ -118,3 +118,24 @@ Qwen-Image-2.1 官方模型还支持原生透明图和多参考图编辑，
 
 模型附带的许可证是 **Qwen Research License Agreement**：
 研究和评估可用；商业使用需要另行取得商业许可。
+
+
+## 图片库与中间结果
+
+Workbench 的右侧图片库默认显示正式图片：
+
+- 载入图片
+- 文生图 / 图生图 / True Edit 的正式结果
+- AI 局部编辑硬合成后的最终结果
+- 手动编辑后“保存为新图片”的结果
+
+旧版本留下的 Qwen 原始 `mask-edit` 整图会保留在本机 `results/intermediate/`，默认不混入正式结果。
+需要研究模型原始输出时，可在右栏筛选“中间结果”或“全部（含中间结果）”。
+
+整个 `results/` 目录都被 Git 忽略，不会上传到 GitHub。
+
+## 可复现的 MLX 运行时
+
+`setup_model.py --runtime-only` 会固定到项目记录的 `mlx-serve` commit，并自动检查/应用
+`patches/qwen-image-2.1-true-edit-mlx.patch`，再构建本地 runtime。
+模型权重仍保存在项目目录之外的 `~/Documents/AI-Models/`。

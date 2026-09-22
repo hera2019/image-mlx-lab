@@ -12,6 +12,7 @@ PERF_DIR = ROOT / "results" / "performance"
 PERF_LOG = PERF_DIR / "qwen-workbench.jsonl"
 OUT_DIR = ROOT / "results" / "web"
 LIB_DIR = ROOT / "results" / "library"
+INTERMEDIATE_DIR = ROOT / "results" / "intermediate"
 IMAGE_EXTS = {".png",".jpg",".jpeg",".webp"}
 
 def now_iso():
@@ -78,12 +79,10 @@ def qwen_models():
 
 def asset_items():
     items=[]
-    for directory,kind in ((OUT_DIR,"generated"),(LIB_DIR,"loaded")):
+    for directory,kind in ((OUT_DIR,"generated"),(LIB_DIR,"loaded"),(INTERMEDIATE_DIR,"intermediate")):
         if not directory.exists(): continue
         for p in directory.iterdir():
             if not p.is_file() or p.suffix.lower() not in IMAGE_EXTS: continue
-            if directory == OUT_DIR and "_mask-edit_" in p.name:
-                continue
             st=p.stat()
             rel="/"+str(p.relative_to(ROOT))
             inferred=kind
@@ -99,7 +98,7 @@ def asset_items():
 def resolve_deletable(url):
     name=Path(str(url)).name
     if not name or name in {".",".."}: raise ValueError("无效文件")
-    for root in (OUT_DIR,LIB_DIR):
+    for root in (OUT_DIR,LIB_DIR,INTERMEDIATE_DIR):
         target=(root/name).resolve()
         if target.parent==root.resolve() and target.is_file():
             return target
@@ -253,6 +252,6 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json(500,{"error":row.get("error","unknown error"),"perf":row})
 
 if __name__=="__main__":
-    OUT_DIR.mkdir(parents=True,exist_ok=True); LIB_DIR.mkdir(parents=True,exist_ok=True)
+    OUT_DIR.mkdir(parents=True,exist_ok=True); LIB_DIR.mkdir(parents=True,exist_ok=True); INTERMEDIATE_DIR.mkdir(parents=True,exist_ok=True)
     print(f"Image MLX Lab: http://127.0.0.1:{PORT}/web/mask-editor/")
     ThreadingHTTPServer(("127.0.0.1",PORT),Handler).serve_forever()

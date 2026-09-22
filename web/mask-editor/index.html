@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Image MLX Lab</title>
-<link rel="stylesheet" href="app.css?v=9">
+<link rel="stylesheet" href="app.css?v=10">
 </head>
 <body><div class="app">
 <header class="topbar compactTopbar">
@@ -147,8 +147,8 @@
 
 <aside class="assetPanel card">
   <div class="assetHead"><div><h2>图片库</h2><span>载入 / 生成 / 编辑结果</span></div><button id="refreshAssets">刷新</button></div>
-  <select id="assetFilter"><option value="all">全部图片</option><option value="generated">生成</option><option value="loaded">载入</option><option value="edited">编辑保存</option></select>
-  <div class="hint">载入、生成、AI局部编辑、手动保存的图片都会出现在这里。点击即可编辑；原文件不会被覆盖。</div>
+  <select id="assetFilter"><option value="final" selected>正式图片</option><option value="all">全部（含中间结果）</option><option value="generated">生成</option><option value="loaded">载入</option><option value="edited">编辑保存</option><option value="intermediate">中间结果</option></select>
+  <div class="hint">“正式图片”不显示 Qwen 原始中间帧；需要研究时可切到“中间结果”。点击正式图片即可编辑，原文件不会被覆盖。</div>
   <div id="assetGallery" class="assetGallery"></div>
   <div class="futureBox"><b>以后可扩充</b><span>文字 · 效果 · 图形 · 模板……</span></div>
 </aside>
@@ -164,5 +164,5 @@
   </div>
 </details>
 
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body></html>
