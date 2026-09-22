@@ -1,0 +1,1107 @@
+diff --git a/src/gen.zig b/src/gen.zig
+index d97114f..ed10057 100644
+--- a/src/gen.zig
++++ b/src/gen.zig
+@@ -609,7 +609,7 @@ pub const ImageEngine = struct {
+             .flux => |*f| f.vae_enc != null,
+             .krea => false,
+             .mage_flow => |m| m.supportsEdit(), // Mage-Flow-Edit-Turbo checkpoint
+-            .qwen_image => false, // text-to-image checkpoint
++            .qwen_image => true, // Qwen-Image-2.1 unified generation + edit
+         };
+     }
+ 
+@@ -617,7 +617,7 @@ pub const ImageEngine = struct {
+     /// and does its own resizing, rather than pre-decoded `edit_images`. MageFlow
+     /// needs a target-size VAE resize AND a separate VLM resize per reference.
+     pub fn editUsesRawBytes(self: *const ImageEngine) bool {
+-        return self.backend == .mage_flow;
++        return self.backend == .mage_flow or self.backend == .qwen_image;
+     }
+ 
+     /// True when real classifier-free guidance (`guidance_scale`/`negative_prompt`)
+@@ -720,7 +720,9 @@ pub const ImageEngine = struct {
+             else
+                 m.generateImage(allocator, prompt, width, height, seed, steps, progress),
+             .qwen_image => |q| blk: {
+-                if (opts.edit_images.len != 0 or opts.edit_image_bytes.len != 0) break :blk error.EditUnsupported;
++                if (opts.edit_image_bytes.len != 0)
++                    break :blk q.editImage(allocator, prompt, opts.edit_image_bytes, width, height, seed, steps, progress);
++                if (opts.edit_images.len != 0) break :blk error.EditUnsupported;
+                 break :blk q.generateImage(allocator, prompt, width, height, seed, steps, .{
+                     .init_image = opts.init_image,
+                     .start_step = if (opts.init_image != null) img2imgStartStep(steps, opts.strength) else 0,
+@@ -747,8 +749,9 @@ pub const ImageEngine = struct {
+             .krea => .{ .w = clampKreaDim(req_w), .h = clampKreaDim(req_h) },
+             // MageFlow is native-resolution, VAE downsample 16 → multiples of 16.
+             .mage_flow => .{ .w = clampKreaDim(req_w), .h = clampKreaDim(req_h) },
+-            // Qwen-Image-2.1: one latent token per 16x16 tile.
+-            .qwen_image => .{ .w = clampKreaDim(req_w), .h = clampKreaDim(req_h) },
++            // Qwen-Image-2.1: VAE /16, but the unified pipeline
++            // requires output width/height to be multiples of 32.
++            .qwen_image => .{ .w = clampQwenDim(req_w), .h = clampQwenDim(req_h) },
+         };
+     }
+ 
+@@ -784,6 +787,15 @@ fn clampKreaDim(v: u32) u32 {
+     return std.math.clamp(rounded, 256, 2048);
+ }
+ 
++/// Qwen-Image-2.1 unified generation/edit requires /32 output geometry.
++/// Round to the nearest multiple rather than always up, to minimize aspect drift
++/// when matching an arbitrary source image such as 600x450.
++fn clampQwenDim(v: u32) u32 {
++    if (v == 0) return 1024;
++    const rounded = ((v + 16) / 32) * 32;
++    return std.math.clamp(rounded, 256, 2048);
++}
++
+ /// The audio modality hosts MULTIPLE architectures (the `ImageBackend`
+ /// convention): Qwen3-TTS speech synthesis and ACE-Step music generation.
+ pub const AudioBackend = union(enum) {
+diff --git a/src/krea.zig b/src/krea.zig
+index 3809b44..722e4d0 100644
+--- a/src/krea.zig
++++ b/src/krea.zig
+@@ -2636,26 +2636,32 @@ pub const Engine = struct {
+     }
+ };
+ 
+-/// [1,3,H,W] f32 [0,1] → RGB8 PNG bytes (caller frees).
++/// [1,C,H,W] f32 [0,1] → PNG bytes, where C is RGB (3) or RGBA (4).
++/// Caller owns the returned slice.
+ pub fn imageToPng(allocator: std.mem.Allocator, img: mlx.mlx_array, s: S) ![]u8 {
+     const cf = try contig(img, s);
+     defer _ = mlx.mlx_array_free(cf);
+     _ = mlx.mlx_array_eval(cf);
+-    const sh = mlx.getShape(cf); // [1,3,H,W]
++    const sh = mlx.getShape(cf);
++    const C: usize = @intCast(sh[1]);
++    if (C != 3 and C != 4) return error.UnsupportedImageChannels;
+     const H: usize = @intCast(sh[2]);
+     const W: usize = @intCast(sh[3]);
+     const d = mlx.mlx_array_data_float32(cf) orelse return error.NoData;
+-    const rgb = try allocator.alloc(u8, W * H * 3);
+-    defer allocator.free(rgb);
++    const pixels = try allocator.alloc(u8, W * H * C);
++    defer allocator.free(pixels);
+     const plane = W * H;
+     for (0..H) |y| for (0..W) |x| {
+-        const o = (y * W + x) * 3;
+-        for (0..3) |c| {
++        const o = (y * W + x) * C;
++        for (0..C) |c| {
+             const v = d[c * plane + y * W + x];
+-            rgb[o + c] = @intFromFloat(std.math.clamp(v * 255.0, 0, 255));
++            pixels[o + c] = @intFromFloat(std.math.clamp(v * 255.0, 0, 255));
+         }
+     };
+-    return png.encodeRgb(allocator, rgb, @intCast(W), @intCast(H));
++    return if (C == 4)
++        png.encodeRgba(allocator, pixels, @intCast(W), @intCast(H))
++    else
++        png.encodeRgb(allocator, pixels, @intCast(W), @intCast(H));
+ }
+ 
+ // ════════════════════════════════════════════════════════════════════════
+diff --git a/src/mage_flow.zig b/src/mage_flow.zig
+index 6f736c6..fbd4b62 100644
+--- a/src/mage_flow.zig
++++ b/src/mage_flow.zig
+@@ -3611,6 +3611,11 @@ const TeLayerW = struct {
+     }
+ };
+ 
++pub const EditEncodeOut = struct {
++    embeddings: mlx.mlx_array,
++    keep: c_int,
++};
++
+ pub const TextEncoder = struct {
+     allocator: std.mem.Allocator,
+     s: S,
+@@ -3751,7 +3756,24 @@ pub const TextEncoder = struct {
+     /// then drops the first `EDIT_DROP_TOKENS`. Returns (embeddings [1,n,2560], n).
+     /// The LM RoPE is sequential (1D) — encode_edit passes explicit positions, so
+     /// no 3-axis M-RoPE. Caller frees the array.
+-    pub fn encodeEdit(self: *const TextEncoder, vit: *const VisionTower, ids: []const i32, mask: []const i32, pixel_values: mlx.mlx_array, grids: []const [3]i64) !struct { embeddings: mlx.mlx_array, keep: c_int } {
++    pub fn encodeEdit(self: *const TextEncoder, vit: *const VisionTower, ids: []const i32, mask: []const i32, pixel_values: mlx.mlx_array, grids: []const [3]i64) !EditEncodeOut {
++        return self.encodeEditWithOptions(vit, ids, mask, pixel_values, grids, EDIT_DROP_TOKENS, true);
++    }
++
++    /// Generic Qwen3-VL image-conditioned encoding used by Qwen-Image-2.1.
++    /// drop_tokens is pipeline-specific; apply_final_norm=false matches
++    /// QwenImage21Pipeline, whose DiT was trained on the final decoder-layer
++    /// hidden state before the language model final RMSNorm.
++    pub fn encodeEditWithOptions(
++        self: *const TextEncoder,
++        vit: *const VisionTower,
++        ids: []const i32,
++        mask: []const i32,
++        pixel_values: mlx.mlx_array,
++        grids: []const [3]i64,
++        drop_tokens: usize,
++        apply_final_norm: bool,
++    ) !EditEncodeOut {
+         const s = self.s;
+         const seq: c_int = @intCast(ids.len);
+ 
+@@ -3818,13 +3840,17 @@ pub const TextEncoder = struct {
+                 x = nx2;
+             }
+         }
+-        const normed = try rmsNormLast(x, self.final_norm, TE_EPS, s);
+-        _ = mlx.mlx_array_free(x);
+-        defer _ = mlx.mlx_array_free(normed);
+-        const drop: c_int = @intCast(EDIT_DROP_TOKENS);
++        var final_hidden = x;
++        if (apply_final_norm) {
++            const normed = try rmsNormLast(x, self.final_norm, TE_EPS, s);
++            _ = mlx.mlx_array_free(x);
++            final_hidden = normed;
++        }
++        defer _ = mlx.mlx_array_free(final_hidden);
++        const drop: c_int = @intCast(drop_tokens);
+         const start = @min(drop, seq);
+         const end = @min(seq, start + @as(c_int, @intCast(TE_MAX_COND)));
+-        const emb = try sliceTeSeq(normed, start, end, s);
++        const emb = try sliceTeSeq(final_hidden, start, end, s);
+         return .{ .embeddings = emb, .keep = end - start };
+     }
+ };
+diff --git a/src/model.zig b/src/model.zig
+index fa06c18..af1a675 100644
+--- a/src/model.zig
++++ b/src/model.zig
+@@ -3669,6 +3669,15 @@ pub fn loadModelWeights(io: std.Io, allocator: std.mem.Allocator, model_dir: []c
+ /// sidecar files that live beside the trunk shards (e.g. a root-level
+ /// `mtp.safetensors`), where a directory scan would sweep in the trunk.
+ pub fn loadWeightsSingleFile(allocator: std.mem.Allocator, abs_path: []const u8) !Weights {
++    return loadWeightsSingleFileOpt(allocator, abs_path, .{});
++}
++
++/// Load one sidecar safetensors file while retaining vision-tower keys.
++pub fn loadWeightsSingleFileWithVision(allocator: std.mem.Allocator, abs_path: []const u8) !Weights {
++    return loadWeightsSingleFileOpt(allocator, abs_path, .{ .vision = true });
++}
++
++fn loadWeightsSingleFileOpt(allocator: std.mem.Allocator, abs_path: []const u8, opts: LoadOpts) !Weights {
+     var weights = Weights.init(allocator);
+     errdefer weights.deinit();
+ 
+@@ -3677,7 +3686,7 @@ pub fn loadWeightsSingleFile(allocator: std.mem.Allocator, abs_path: []const u8)
+ 
+     const pathz = try allocator.dupeSentinel(u8, abs_path, 0);
+     defer allocator.free(pathz);
+-    try loadSafetensorsFile(allocator, &weights, pathz, s, .{});
++    try loadSafetensorsFile(allocator, &weights, pathz, s, opts);
+ 
+     if (weights.count() == 0) {
+         log.err("no usable weights loaded from {s} — corrupt or empty safetensors file?\n", .{abs_path});
+diff --git a/src/png.zig b/src/png.zig
+index 0328e62..0a49bb1 100644
+--- a/src/png.zig
++++ b/src/png.zig
+@@ -42,6 +42,18 @@ pub fn encodeRgb(allocator: std.mem.Allocator, rgb: []const u8, w: u32, h: u32)
+     return list.toOwnedSlice(allocator);
+ }
+ 
++/// Encode `rgba` (interleaved RGBA8, `w*h*4` bytes, row-major) as PNG bytes.
++/// Caller owns the returned slice.
++pub fn encodeRgba(allocator: std.mem.Allocator, rgba: []const u8, w: u32, h: u32) ![]u8 {
++    std.debug.assert(rgba.len == @as(usize, w) * @as(usize, h) * 4);
++    var list: std.ArrayList(u8) = .empty;
++    errdefer list.deinit(allocator);
++    var sink = Sink{ .list = &list, .allocator = allocator };
++    const rc = stbi_write_png_to_func(writeCb, &sink, @intCast(w), @intCast(h), 4, rgba.ptr, @intCast(w * 4));
++    if (rc == 0 or sink.err) return error.PngEncodeFailed;
++    return list.toOwnedSlice(allocator);
++}
++
+ test "encodeRgb produces a valid PNG" {
+     const a = std.testing.allocator;
+     // 2x2 RGB checkerboard.
+diff --git a/src/qwen_image.zig b/src/qwen_image.zig
+index 46f2f41..bcb1bb2 100644
+--- a/src/qwen_image.zig
++++ b/src/qwen_image.zig
+@@ -24,6 +24,8 @@ const std = @import("std");
+ const mlx = @import("mlx.zig");
+ const log = @import("log.zig");
+ const sse = @import("gen_sse.zig");
++const stb = @import("stb");
++const qvis = @import("qwen_vision.zig");
+ const model_mod = @import("model.zig");
+ const tok_mod = @import("tokenizer.zig");
+ const mage_flow = @import("mage_flow.zig");
+@@ -33,6 +35,20 @@ const S = mlx.mlx_stream;
+ const A = mlx.mlx_array;
+ const MfLinear = mage_flow.MfLinear;
+ const TextEncoder = mage_flow.TextEncoder;
++const VisionTower = mage_flow.VisionTower;
++
++const QWEN21_VIT = mage_flow.VitConfig{
++    .hidden = 1152,
++    .heads = 16,
++    .inter = 4304,
++    .depth = 27,
++    .out = 4096,
++    .deepstack = .{ 8, 16, 24 },
++    .prefix = "model.visual",
++};
++const IMAGE_TOKEN_ID: i32 = 151655;
++const MAX_EDIT_REFS: usize = 4;
++const VIT_PATCH_IN: c_int = 3 * 2 * 16 * 16; // C * temporal_patch * 16²
+ 
+ /// The reference's recommended sampling: 40 steps, no guidance.
+ pub const DEFAULT_STEPS: u32 = 40;
+@@ -178,6 +194,26 @@ fn sdpa(q: A, k: A, v: A, scale: f32, mode: [*:0]const u8, s: S) !A {
+     try mlx.check(mlx.mlx_fast_scaled_dot_product_attention(&o, q, k, v, scale, mode, none, none, false, s));
+     return o;
+ }
++fn sdpaMask(q: A, k: A, v: A, scale: f32, mask: A, s: S) !A {
++    const none = A{ .ctx = null };
++    var o = mlx.mlx_array_new();
++    try mlx.check(mlx.mlx_fast_scaled_dot_product_attention(&o, q, k, v, scale, "array", mask, none, false, s));
++    return o;
++}
++
++fn putRows(flat: A, positions: A, values: A, s: S) !A {
++    const h = mlx.getShape(flat)[1];
++    const n = mlx.getShape(values)[0];
++    const idx1 = try reshape(positions, &[_]c_int{ n, 1 }, s);
++    defer free(idx1);
++    const ish = [_]c_int{ n, h };
++    var idx2 = mlx.mlx_array_new();
++    defer free(idx2);
++    try mlx.check(mlx.mlx_broadcast_to(&idx2, idx1, &ish, 2, s));
++    var out = mlx.mlx_array_new();
++    try mlx.check(mlx.mlx_put_along_axis(&out, flat, idx2, values, 0, s));
++    return out;
++}
+ 
+ // ── Config ──
+ 
+@@ -391,6 +427,199 @@ pub const Geometry = struct {
+     }
+ };
+ 
++
++const EditShape = struct { h: usize, w: usize };
++const EditSegment = struct {
++    start: c_int,
++    end: c_int,
++    image: bool,
++};
++
++/// Per-request geometry for true Qwen-Image-2.1 image-conditioned editing.
++/// The prompt contains one merged Qwen3-VL image slot per 2x2 VAE-latent block;
++/// each slot expands to four clean reference-latent tokens. The target image is
++/// appended as the final image block.
++const EditGeometry = struct {
++    allocator: std.mem.Allocator,
++    cos: A,
++    sin: A,
++    mod_row: A, // 1 => t=0 (text + refs), 0 => current t (target)
++    segments: []EditSegment,
++    expanded_prompt_len: c_int,
++    target_start: c_int,
++    total_len: c_int,
++
++    pub fn init(
++        allocator: std.mem.Allocator,
++        cfg: DitConfig,
++        image_pad_mask: []const bool,
++        ref_shapes: []const EditShape,
++        target_h: usize,
++        target_w: usize,
++    ) !EditGeometry {
++        var pad_slots: usize = 0;
++        for (image_pad_mask) |v| if (v) { pad_slots += 1; };
++        var expected_slots: usize = 0;
++        for (ref_shapes) |sh| {
++            if ((sh.h * sh.w) % 4 != 0) return error.InvalidEditReferenceShape;
++            expected_slots += sh.h * sh.w / 4;
++        }
++        if (pad_slots != expected_slots) {
++            log.err("[qwen-image] edit geometry: {d} image-pad slots but refs require {d}\n", .{ pad_slots, expected_slots });
++            return error.QwenImageVisionTokenMismatch;
++        }
++
++        const expanded_prompt_len = image_pad_mask.len + pad_slots * 3;
++        const target_len = target_h * target_w;
++        const total = expanded_prompt_len + target_len;
++        const image_ids = try allocator.alloc(i32, total);
++        defer allocator.free(image_ids);
++        @memset(image_ids, -1);
++
++        // Expand each image-pad slot to four latent-token positions, consuming
++        // the references in prompt order.
++        var out: usize = 0;
++        var ref_i: usize = 0;
++        var ref_slots_used: usize = 0;
++        for (image_pad_mask) |is_pad| {
++            if (!is_pad) {
++                image_ids[out] = -1;
++                out += 1;
++                continue;
++            }
++            if (ref_i >= ref_shapes.len) return error.QwenImageVisionTokenMismatch;
++            for (0..4) |_| {
++                image_ids[out] = @intCast(ref_i);
++                out += 1;
++            }
++            ref_slots_used += 1;
++            const need = ref_shapes[ref_i].h * ref_shapes[ref_i].w / 4;
++            if (ref_slots_used == need) {
++                ref_i += 1;
++                ref_slots_used = 0;
++            }
++        }
++        if (ref_i != ref_shapes.len or ref_slots_used != 0 or out != expanded_prompt_len)
++            return error.QwenImageVisionTokenMismatch;
++
++        const target_id: i32 = @intCast(ref_shapes.len);
++        for (expanded_prompt_len..total) |i| image_ids[i] = target_id;
++
++        // Block starts are determined by the expanded sequence itself.
++        const nblocks = ref_shapes.len + 1;
++        const starts = try allocator.alloc(usize, nblocks);
++        defer allocator.free(starts);
++        @memset(starts, total);
++        for (image_ids, 0..) |id, i| {
++            if (id >= 0) {
++                const u: usize = @intCast(id);
++                if (starts[u] == total) starts[u] = i;
++            }
++        }
++        for (starts) |st| if (st == total) return error.QwenImageVisionTokenMismatch;
++
++        // Official QwenImage21Rope: text advances all three axes; each image
++        // block freezes frame at the preceding text position and uses centered
++        // H/W coordinates. After an image, the scalar text position advances by
++        // max(H,W), not by H*W.
++        const frame = try allocator.alloc(i64, total);
++        defer allocator.free(frame);
++        const ypos = try allocator.alloc(i64, total);
++        defer allocator.free(ypos);
++        const xpos = try allocator.alloc(i64, total);
++        defer allocator.free(xpos);
++        var cursor: usize = 0;
++        var position: i64 = 0;
++        for (0..nblocks) |bi| {
++            const st = starts[bi];
++            for (cursor..st) |i| {
++                const p = position + @as(i64, @intCast(i - cursor));
++                frame[i] = p; ypos[i] = p; xpos[i] = p;
++            }
++            position += @intCast(st - cursor);
++            const sh: EditShape = if (bi < ref_shapes.len) ref_shapes[bi] else .{ .h = target_h, .w = target_w };
++            const block_len = sh.h * sh.w;
++            const h0: i64 = -@as(i64, @intCast(sh.h - sh.h / 2));
++            const w0: i64 = -@as(i64, @intCast(sh.w - sh.w / 2));
++            for (0..block_len) |j| {
++                const i = st + j;
++                frame[i] = position;
++                ypos[i] = h0 + @as(i64, @intCast(j / sh.w));
++                xpos[i] = w0 + @as(i64, @intCast(j % sh.w));
++            }
++            position += @intCast(@max(sh.h, sh.w));
++            cursor = st + block_len;
++        }
++        if (cursor < total) {
++            for (cursor..total) |i| {
++                const p = position + @as(i64, @intCast(i - cursor));
++                frame[i] = p; ypos[i] = p; xpos[i] = p;
++            }
++        }
++
++        const half: usize = cfg.head_dim / 2;
++        const cosb = try allocator.alloc(f32, total * half);
++        defer allocator.free(cosb);
++        const sinb = try allocator.alloc(f32, total * half);
++        defer allocator.free(sinb);
++        const rows = try allocator.alloc(i32, total);
++        defer allocator.free(rows);
++        for (0..total) |p| {
++            rows[p] = if (p >= expanded_prompt_len) 0 else 1;
++            const pos = [3]i64{ frame[p], ypos[p], xpos[p] };
++            var col: usize = 0;
++            for (cfg.axes, pos) |dim, ax_pos| {
++                for (0..dim / 2) |k| {
++                    const expo = @as(f32, @floatFromInt(2 * k)) / @as(f32, @floatFromInt(dim));
++                    const omega: f32 = 1.0 / std.math.pow(f32, 10000.0, expo);
++                    const ang: f32 = @as(f32, @floatFromInt(ax_pos)) * omega;
++                    cosb[p * half + col] = @cos(ang);
++                    sinb[p * half + col] = @sin(ang);
++                    col += 1;
++                }
++            }
++        }
++
++        // Segment the sequence into text runs and individual image blocks. This
++        // is enough to implement the exact block-causal rule without allocating
++        // one giant LxL mask.
++        var segs = std.ArrayList(EditSegment).empty;
++        errdefer segs.deinit(allocator);
++        var ss: usize = 0;
++        while (ss < total) {
++            const id = image_ids[ss];
++            var ee = ss + 1;
++            while (ee < total and image_ids[ee] == id) : (ee += 1) {}
++            try segs.append(allocator, .{
++                .start = @intCast(ss),
++                .end = @intCast(ee),
++                .image = id >= 0,
++            });
++            ss = ee;
++        }
++
++        const sh5 = [_]c_int{ 1, @intCast(total), 1, @intCast(half), 1 };
++        const rsh = [_]c_int{@intCast(total)};
++        return .{
++            .allocator = allocator,
++            .cos = mlx.mlx_array_new_data(cosb.ptr, &sh5, sh5.len, .float32),
++            .sin = mlx.mlx_array_new_data(sinb.ptr, &sh5, sh5.len, .float32),
++            .mod_row = mlx.mlx_array_new_data(rows.ptr, &rsh, 1, .int32),
++            .segments = try segs.toOwnedSlice(allocator),
++            .expanded_prompt_len = @intCast(expanded_prompt_len),
++            .target_start = @intCast(expanded_prompt_len),
++            .total_len = @intCast(total),
++        };
++    }
++
++    pub fn deinit(self: *EditGeometry) void {
++        free(self.cos);
++        free(self.sin);
++        free(self.mod_row);
++        self.allocator.free(self.segments);
++    }
++};
++
+ const Block = struct {
+     q: MfLinear,
+     k: MfLinear,
+@@ -530,7 +759,7 @@ pub const Dit = struct {
+         return self.t2.forward(act, null, s);
+     }
+ 
+-    fn stepMod(self: *const Dit, temb_act: A, geo: *const Geometry) !StepMod {
++    fn stepMod(self: *const Dit, temb_act: A, geo: anytype) !StepMod {
+         const s = self.s;
+         const H: c_int = @intCast(self.cfg.hidden());
+         const mod = try self.modulation.forward(temb_act, null, s); // [2, 4H]: scale1 gate1 scale2 gate2
+@@ -554,7 +783,7 @@ pub const Dit = struct {
+     }
+ 
+     /// Rotate interleaved pairs (2k, 2k+1) of x [1, L, heads, hd] in f32.
+-    fn applyRope(self: *const Dit, x: A, geo: *const Geometry) !A {
++    fn applyRope(self: *const Dit, x: A, geo: anytype) !A {
+         const s = self.s;
+         const sh = mlx.getShape(x);
+         const half = @divExact(sh[3], 2);
+@@ -586,7 +815,7 @@ pub const Dit = struct {
+     }
+ 
+     /// Project → per-head RMS norm → RoPE → [1, heads, L, hd].
+-    fn headsOf(self: *const Dit, lin: *const MfLinear, norm: ?A, x: A, geo: *const Geometry) !A {
++    fn headsOf(self: *const Dit, lin: *const MfLinear, norm: ?A, x: A, geo: anytype) !A {
+         const s = self.s;
+         const sh = mlx.getShape(x);
+         const y = try lin.forward(x, null, s);
+@@ -639,6 +868,100 @@ pub const Dit = struct {
+         return b.o.forward(flat, null, s);
+     }
+ 
++    fn editTextMask(self: *const Dit, start: c_int, q_len: c_int, kv_len: c_int) !A {
++        const n: usize = @intCast(q_len * kv_len);
++        const buf = try self.allocator.alloc(f32, n);
++        defer self.allocator.free(buf);
++        for (0..@as(usize, @intCast(q_len))) |qi| {
++            const max_k: usize = @intCast(start + @as(c_int, @intCast(qi)));
++            for (0..@as(usize, @intCast(kv_len))) |ki|
++                buf[qi * @as(usize, @intCast(kv_len)) + ki] = if (ki <= max_k) 0.0 else -1.0e9;
++        }
++        const sh = [_]c_int{ 1, 1, q_len, kv_len };
++        const raw = mlx.mlx_array_new_data(buf.ptr, &sh, sh.len, .float32);
++        defer free(raw);
++        return astype(raw, self.dtype, self.s);
++    }
++
++    /// Exact Qwen-Image-2.1 block-causal attention for edit:
++    /// text is causal across the whole preceding sequence; every image block is
++    /// bidirectional internally and can see the entire prefix.
++    fn attentionEdit(self: *const Dit, b: *const Block, x: A, geo: *const EditGeometry) !A {
++        const s = self.s;
++        const sh = mlx.getShape(x);
++        const q = try self.headsOf(&b.q, b.norm_q, x, geo);
++        defer free(q);
++        const k = try self.headsOf(&b.k, b.norm_k, x, geo);
++        defer free(k);
++        const v = try self.headsOf(&b.v, null, x, geo);
++        defer free(v);
++        const scale: f32 = 1.0 / @sqrt(@as(f32, @floatFromInt(self.cfg.head_dim)));
++
++        var outs = std.ArrayList(A).empty;
++        defer {
++            for (outs.items) |o| free(o);
++            outs.deinit(self.allocator);
++        }
++        for (geo.segments) |seg| {
++            const qseg = try sliceAxis(q, 2, seg.start, seg.end, s);
++            defer free(qseg);
++            const kp = try sliceAxis(k, 2, 0, seg.end, s);
++            defer free(kp);
++            const vp = try sliceAxis(v, 2, 0, seg.end, s);
++            defer free(vp);
++            const q_len = seg.end - seg.start;
++            const o = if (seg.image)
++                try sdpa(qseg, kp, vp, scale, "", s)
++            else if (seg.start == 0)
++                try sdpa(qseg, kp, vp, scale, "causal", s)
++            else blk: {
++                const mask = try self.editTextMask(seg.start, q_len, seg.end);
++                defer free(mask);
++                break :blk try sdpaMask(qseg, kp, vp, scale, mask, s);
++            };
++            try outs.append(self.allocator, o);
++        }
++        const joined = if (outs.items.len == 1) try contig(outs.items[0], s) else try concat(outs.items, 2, s);
++        defer free(joined);
++        const back = try transpose(joined, &[_]c_int{ 0, 2, 1, 3 }, s);
++        defer free(back);
++        const flat = try reshape(back, &[_]c_int{ sh[0], sh[1], sh[2] }, s);
++        defer free(flat);
++        return b.o.forward(flat, null, s);
++    }
++
++    fn blockForwardEdit(self: *const Dit, b: *const Block, x: A, mod: *const StepMod, geo: *const EditGeometry) !A {
++        const s = self.s;
++        const n1 = try layerNorm(x, self.cfg.eps, s);
++        defer free(n1);
++        const a_in = try mulA(n1, mod.scale1, s);
++        defer free(a_in);
++        const attn = try self.attentionEdit(b, a_in, geo);
++        defer free(attn);
++        const ga = try mulA(attn, mod.gate1, s);
++        defer free(ga);
++        const h = try addA(x, ga, s);
++        defer free(h);
++
++        const n2 = try layerNorm(h, self.cfg.eps, s);
++        defer free(n2);
++        const m_in = try mulA(n2, mod.scale2, s);
++        defer free(m_in);
++        const g = try b.gate.forward(m_in, null, s);
++        defer free(g);
++        const sg = try silu(g, s);
++        defer free(sg);
++        const p = try b.proj.forward(m_in, null, s);
++        defer free(p);
++        const gp = try mulA(sg, p, s);
++        defer free(gp);
++        const mlp = try b.out.forward(gp, null, s);
++        defer free(mlp);
++        const gm = try mulA(mlp, mod.gate2, s);
++        defer free(gm);
++        return addA(h, gm, s);
++    }
++
+     fn blockForward(self: *const Dit, b: *const Block, x: A, mod: *const StepMod, geo: *const Geometry) !A {
+         const s = self.s;
+         const n1 = try layerNorm(x, self.cfg.eps, s);
+@@ -725,6 +1048,102 @@ pub const Dit = struct {
+         defer free(scaled);
+         return self.proj_out.forward(scaled, null, s);
+     }
++
++    /// True Qwen-Image-2.1 edit forward. The Qwen3-VL-conditioned prompt
++    /// keeps image placeholder rows; those slots expand 4x and are replaced by
++    /// clean VAE reference latents. The target block is appended and is the
++    /// only block whose modulation uses the sampled time.
++    pub fn forwardEdit(
++        self: *const Dit,
++        target: A,
++        refs: A,
++        txt: A,
++        image_pad_mask: []const bool,
++        t: f32,
++        geo: *const EditGeometry,
++    ) !A {
++        const s = self.s;
++        const temb = try self.timeEmbed(t);
++        defer free(temb);
++        const temb_act = try silu(temb, s);
++        defer free(temb_act);
++        var mod = try self.stepMod(temb_act, geo);
++        defer mod.deinit();
++
++        const th = try self.textIn(txt);
++        defer free(th);
++        const rh = try self.img_in.forward(refs, null, s);
++        defer free(rh);
++        const ih = try self.img_in.forward(target, null, s);
++        defer free(ih);
++
++        const T: usize = image_pad_mask.len;
++        const lp: usize = @intCast(geo.expanded_prompt_len);
++        const R: usize = @intCast(mlx.getShape(refs)[1]);
++        const H: c_int = @intCast(self.cfg.hidden());
++        const map = try self.allocator.alloc(i32, lp);
++        defer self.allocator.free(map);
++        const ref_pos = try self.allocator.alloc(i32, R);
++        defer self.allocator.free(ref_pos);
++        var oi: usize = 0;
++        var ri: usize = 0;
++        for (0..T) |ti| {
++            const repeat: usize = if (image_pad_mask[ti]) 4 else 1;
++            for (0..repeat) |_| {
++                map[oi] = @intCast(ti);
++                if (image_pad_mask[ti]) {
++                    if (ri >= R) return error.QwenImageVisionTokenMismatch;
++                    ref_pos[ri] = @intCast(oi);
++                    ri += 1;
++                }
++                oi += 1;
++            }
++        }
++        if (oi != lp or ri != R) return error.QwenImageVisionTokenMismatch;
++
++        const msh = [_]c_int{@intCast(lp)};
++        const map_a = mlx.mlx_array_new_data(map.ptr, &msh, 1, .int32);
++        defer free(map_a);
++        var expanded = mlx.mlx_array_new();
++        defer free(expanded);
++        try mlx.check(mlx.mlx_take_axis(&expanded, th, map_a, 1, s));
++
++        const flat = try reshape(expanded, &[_]c_int{ @intCast(lp), H }, s);
++        defer free(flat);
++        const rflat = try reshape(rh, &[_]c_int{ @intCast(R), H }, s);
++        defer free(rflat);
++        const rsh = [_]c_int{@intCast(R)};
++        const rpos_a = mlx.mlx_array_new_data(ref_pos.ptr, &rsh, 1, .int32);
++        defer free(rpos_a);
++        const replaced = try putRows(flat, rpos_a, rflat, s);
++        defer free(replaced);
++        const prompt_joint = try reshape(replaced, &[_]c_int{ 1, @intCast(lp), H }, s);
++        defer free(prompt_joint);
++
++        var x = try concat(&.{ prompt_joint, ih }, 1, s);
++        errdefer free(x);
++        if (mlx.getShape(x)[1] != geo.total_len) return error.QwenImageEditGeometryMismatch;
++        for (self.blocks) |*b| {
++            const nx = try self.blockForwardEdit(b, x, &mod, geo);
++            free(x);
++            x = nx;
++        }
++        defer free(x);
++
++        const xt = try sliceAxis(x, 1, geo.target_start, geo.total_len, s);
++        defer free(xt);
++        const n = try layerNorm(xt, self.cfg.eps, s);
++        defer free(n);
++        const sc2 = try self.norm_out.forward(temb_act, null, s);
++        defer free(sc2);
++        const sc = try sliceAxis(sc2, 0, 0, 1, s);
++        defer free(sc);
++        const opsc = try addScalar(sc, 1.0, s);
++        defer free(opsc);
++        const scaled = try mulA(n, opsc, s);
++        defer free(scaled);
++        return self.proj_out.forward(scaled, null, s);
++    }
+ };
+ 
+ // ── VAE (f32, NHWC inside) ──
+@@ -1201,8 +1620,8 @@ pub const VaeDecoder = struct {
+         self.h.deinit();
+     }
+ 
+-    /// Normalized latent [1, z, h, w] → pixels [1, 3, 16h, 16w] f32 in [-1, 1].
+-    /// The 4th output channel carries edit masks, not image content.
++    /// Normalized latent [1, z, h, w] → pixels [1, 4, 16h, 16w] f32 in [-1, 1].
++    /// Qwen-Image-2.1 VAE is natively RGBA; channel 3 is alpha.
+     pub fn decode(self: *const VaeDecoder, latent: A) !A {
+         const s = self.h.s;
+         const lf = try astype(latent, .float32, s);
+@@ -1228,9 +1647,7 @@ pub const VaeDecoder = struct {
+         defer free(x);
+         const out = try self.h.head(x);
+         defer free(out);
+-        const rgb = try sliceAxis(out, 3, 0, 3, s);
+-        defer free(rgb);
+-        return transpose(rgb, &[_]c_int{ 0, 3, 1, 2 }, s);
++        return transpose(out, &[_]c_int{ 0, 3, 1, 2 }, s);
+     }
+ };
+ 
+@@ -1263,18 +1680,26 @@ pub const VaeEncoder = struct {
+         self.h.deinit();
+     }
+ 
+-    /// Pixels [1, 3, H, W] f32 in [-1, 1] → normalized latent mean [1, z, H/16, W/16].
++    /// Pixels [1,C,H,W] f32 in [-1,1], C=3 (opaque RGB) or C=4 (RGBA),
++    /// → normalized latent mean [1,z,H/16,W/16].
+     pub fn encode(self: *const VaeEncoder, image: A) !A {
+         const s = self.h.s;
++        const image_shape = mlx.getShape(image);
++        if (image_shape.len != 4) return error.InvalidImageDimensions;
++        const channels = image_shape[1];
+         const nhwc = try transpose(image, &[_]c_int{ 0, 2, 3, 1 }, s);
+         defer free(nhwc);
+-        const alpha_src = try sliceAxis(nhwc, 3, 0, 1, s);
+-        defer free(alpha_src);
+-        const zeroed = try mulScalar(alpha_src, 0.0, s);
+-        defer free(zeroed);
+-        const alpha = try addScalar(zeroed, 1.0, s);
+-        defer free(alpha);
+-        const rgba = try concat(&.{ nhwc, alpha }, 3, s);
++        const rgba = if (channels == 4)
++            try contig(nhwc, s)
++        else if (channels == 3) blk: {
++            const alpha_src = try sliceAxis(nhwc, 3, 0, 1, s);
++            defer free(alpha_src);
++            const zeroed = try mulScalar(alpha_src, 0.0, s);
++            defer free(zeroed);
++            const alpha = try addScalar(zeroed, 1.0, s);
++            defer free(alpha);
++            break :blk try concat(&.{ nhwc, alpha }, 3, s);
++        } else return error.UnsupportedImageChannels;
+         defer free(rgba);
+         var x = try self.h.conv_in.forward(rgba, 1, 1, s);
+         errdefer free(x);
+@@ -1328,6 +1753,159 @@ pub fn cfgActive(opts: GenOpts) bool {
+     return opts.guidance_scale != 1.0;
+ }
+ 
++
++const EditVlmInput = struct { pv: A, gh: u32, gw: u32, ntok: u32 };
++
++fn decodeEditRefVae(allocator: std.mem.Allocator, bytes: []const u8, W: u32, H: u32, s: S) !A {
++    var w: c_int = 0;
++    var h: c_int = 0;
++    var ch: c_int = 0;
++    const src = stb.stbi_load_from_memory(bytes.ptr, @intCast(bytes.len), &w, &h, &ch, 4) orelse return error.ImageDecodeFailed;
++    defer stb.stbi_image_free(src);
++    const sw: u32 = @intCast(w);
++    const sh: u32 = @intCast(h);
++    if (sw == 0 or sh == 0) return error.ImageDecodeFailed;
++    const source_plane: usize = @as(usize, sw) * sh;
++    const target_plane: usize = @as(usize, W) * H;
++    const rgba = src[0 .. source_plane * 4];
++    const rgb = try allocator.alloc(u8, source_plane * 3);
++    defer allocator.free(rgb);
++    const alpha3 = try allocator.alloc(u8, source_plane * 3);
++    defer allocator.free(alpha3);
++    for (0..source_plane) |i| {
++        rgb[i * 3 + 0] = rgba[i * 4 + 0];
++        rgb[i * 3 + 1] = rgba[i * 4 + 1];
++        rgb[i * 3 + 2] = rgba[i * 4 + 2];
++        const a8 = rgba[i * 4 + 3];
++        alpha3[i * 3 + 0] = a8;
++        alpha3[i * 3 + 1] = a8;
++        alpha3[i * 3 + 2] = a8;
++    }
++    const rgb_chw = try allocator.alloc(f32, target_plane * 3);
++    defer allocator.free(rgb_chw);
++    const alpha_chw = try allocator.alloc(f32, target_plane * 3);
++    defer allocator.free(alpha_chw);
++    try qvis.resizeRgbBicubicNormalizedChw(allocator, rgb_chw, rgb, sh, sw, H, W);
++    try qvis.resizeRgbBicubicNormalizedChw(allocator, alpha_chw, alpha3, sh, sw, H, W);
++    const dst = try allocator.alloc(f32, target_plane * 4);
++    defer allocator.free(dst);
++    @memcpy(dst[0 .. target_plane * 3], rgb_chw);
++    @memcpy(dst[target_plane * 3 .. target_plane * 4], alpha_chw[0..target_plane]);
++    const shape = [_]c_int{ 1, 4, @intCast(H), @intCast(W) };
++    const raw = mlx.mlx_array_new_data(dst.ptr, &shape, 4, .float32);
++    defer free(raw);
++    return contig(raw, s);
++}
++
++fn decodeEditRefVlm(allocator: std.mem.Allocator, bytes: []const u8, W: u32, H: u32, s: S) !EditVlmInput {
++    var w: c_int = 0;
++    var h: c_int = 0;
++    var ch: c_int = 0;
++    const src = stb.stbi_load_from_memory(bytes.ptr, @intCast(bytes.len), &w, &h, &ch, 4) orelse return error.ImageDecodeFailed;
++    defer stb.stbi_image_free(src);
++    const sw: u32 = @intCast(w);
++    const sh: u32 = @intCast(h);
++    if (sw == 0 or sh == 0) return error.ImageDecodeFailed;
++    if (W % 32 != 0 or H % 32 != 0) return error.InvalidImageDimensions;
++    const source_plane: usize = @as(usize, sw) * sh;
++    const rgba = src[0 .. source_plane * 4];
++    const rgb = try allocator.alloc(u8, source_plane * 3);
++    defer allocator.free(rgb);
++    // Qwen3-VL sees RGBA composited over white; VAE keeps the real alpha.
++    for (0..source_plane) |i| {
++        const a8: u32 = rgba[i * 4 + 3];
++        for (0..3) |c| {
++            const v: u32 = rgba[i * 4 + c];
++            rgb[i * 3 + c] = @intCast((v * a8 + 255 * (255 - a8) + 127) / 255);
++        }
++    }
++    const chw = try allocator.alloc(f32, @as(usize, W) * H * 3);
++    defer allocator.free(chw);
++    try qvis.resizeRgbBicubicNormalizedChw(allocator, chw, rgb, sh, sw, H, W);
++    const gh = H / 16;
++    const gw = W / 16;
++    const pv_buf = try allocator.alloc(f32, @as(usize, gh) * gw * @as(usize, @intCast(VIT_PATCH_IN)));
++    defer allocator.free(pv_buf);
++    qvis.buildPixelValues(pv_buf, chw, 3, H, W, 16, 2, 2);
++    const shape = [_]c_int{ @intCast(gh * gw), VIT_PATCH_IN };
++    const raw = mlx.mlx_array_new_data(pv_buf.ptr, &shape, 2, .float32);
++    defer free(raw);
++    return .{
++        .pv = try contig(raw, s),
++        .gh = gh,
++        .gw = gw,
++        .ntok = (gh / 2) * (gw / 2),
++    };
++}
++
++const EditPrompt = struct {
++    ids: []i32,
++    mask: []i32,
++    pad_after_drop: []bool,
++    fn deinit(self: *EditPrompt, allocator: std.mem.Allocator) void {
++        allocator.free(self.ids);
++        allocator.free(self.mask);
++        allocator.free(self.pad_after_drop);
++    }
++};
++
++fn buildQwen21EditPrompt(
++    tok: *const tok_mod.Tokenizer,
++    allocator: std.mem.Allocator,
++    prompt: []const u8,
++    ntoks: []const u32,
++    drop_tokens: usize,
++) !EditPrompt {
++    var sb: std.ArrayList(u8) = .empty;
++    defer sb.deinit(allocator);
++    try sb.appendSlice(allocator, SYSTEM_PREFIX ++ USER_PREFIX);
++    for (ntoks, 0..) |ntok, k| {
++        if (k != 0) try sb.append(allocator, ' ');
++        const tag = try std.fmt.allocPrint(allocator, "<image{d}><|vision_start|>", .{k + 1});
++        defer allocator.free(tag);
++        try sb.appendSlice(allocator, tag);
++        for (0..ntok) |_| try sb.appendSlice(allocator, "<|image_pad|>");
++        try sb.appendSlice(allocator, "<|vision_end|>");
++    }
++    try sb.appendSlice(allocator, prompt);
++    try sb.appendSlice(allocator, PROMPT_SUFFIX);
++
++    const enc = try tok.encode(allocator, sb.items);
++    defer allocator.free(enc);
++    const cap = @min(enc.len, drop_tokens + mage_flow.TE_MAX_COND);
++    const ids = try allocator.alloc(i32, cap);
++    errdefer allocator.free(ids);
++    const mask = try allocator.alloc(i32, cap);
++    errdefer allocator.free(mask);
++    for (enc[0..cap], 0..) |id, i| {
++        ids[i] = @intCast(id);
++        mask[i] = 1;
++    }
++    const start = @min(drop_tokens, cap);
++    const keep = cap - start;
++    const pads = try allocator.alloc(bool, keep);
++    errdefer allocator.free(pads);
++    var seen: usize = 0;
++    for (ids[start..cap], 0..) |id, i| {
++        pads[i] = id == IMAGE_TOKEN_ID;
++        if (pads[i]) seen += 1;
++    }
++    var expected: usize = 0;
++    for (ntoks) |n| expected += n;
++    if (seen != expected) {
++        log.err("[qwen-image] edit prompt truncated image tokens: kept {d}, expected {d}\n", .{ seen, expected });
++        return error.QwenImageEditPromptTooLong;
++    }
++    return .{ .ids = ids, .mask = mask, .pad_after_drop = pads };
++}
++
++fn packEditLatent(lat: A, s: S) !A {
++    const sh = mlx.getShape(lat);
++    const nhwc = try transpose(lat, &[_]c_int{ 0, 2, 3, 1 }, s);
++    defer free(nhwc);
++    return reshape(nhwc, &[_]c_int{ sh[0], sh[2] * sh[3], sh[1] }, s);
++}
++
+ pub const Engine = struct {
+     allocator: std.mem.Allocator,
+     io: std.Io,
+@@ -1520,6 +2098,174 @@ pub const Engine = struct {
+         return denormImage(decoded, s);
+     }
+ 
++    /// Unified Qwen-Image-2.1 instruction edit (single/multi-reference).
++    /// Reference images are seen twice: by Qwen3-VL for semantic conditioning
++    /// and by the VAE as clean t=0 latent blocks. Only the final target block
++    /// starts from noise and is Euler-updated.
++    pub fn editImage(
++        self: *Engine,
++        allocator: std.mem.Allocator,
++        prompt: []const u8,
++        edit_bytes: []const []const u8,
++        width: u32,
++        height: u32,
++        seed: u64,
++        steps: u32,
++        progress: ?sse.Progress,
++    ) !A {
++        if (edit_bytes.len == 0) return error.NoReferenceImages;
++        if (edit_bytes.len > MAX_EDIT_REFS) return error.TooManyReferenceImages;
++        if (width % 32 != 0 or height % 32 != 0) return error.InvalidImageDimensions;
++        const s = self.s;
++        const n_steps: u32 = if (steps == 0) DEFAULT_STEPS else steps;
++        const lat_h: usize = height / VAE_DOWNSAMPLE;
++        const lat_w: usize = width / VAE_DOWNSAMPLE;
++        const z: c_int = @intCast(self.dit_cfg.in_ch);
++        const n_target: c_int = @intCast(lat_h * lat_w);
++
++        log.info("[qwen-image] EDIT {d} refs -> {d}x{d}, steps={d}, Chinese/English prompt via Qwen3-VL\n", .{
++            edit_bytes.len, width, height, n_steps,
++        });
++        if (progress) |p| p.emit("Encoding reference images", 0, n_steps);
++
++        var ref_packs: std.ArrayList(A) = .empty;
++        defer {
++            for (ref_packs.items) |x| free(x);
++            ref_packs.deinit(allocator);
++        }
++        var pv_chunks: std.ArrayList(A) = .empty;
++        defer {
++            for (pv_chunks.items) |x| free(x);
++            pv_chunks.deinit(allocator);
++        }
++        var grids: std.ArrayList([3]i64) = .empty;
++        defer grids.deinit(allocator);
++        var ntoks: std.ArrayList(u32) = .empty;
++        defer ntoks.deinit(allocator);
++        var ref_shapes: std.ArrayList(EditShape) = .empty;
++        defer ref_shapes.deinit(allocator);
++
++        // Stage 1: VAE-encode all references, materialize, then drop encoder.
++        {
++            var ve = try VaeEncoder.load(self.io, self.allocator, s, self.model_dir, self.vae_cfg);
++            defer ve.deinit();
++            for (edit_bytes) |b| {
++                const vin = try decodeEditRefVae(allocator, b, width, height, s);
++                defer free(vin);
++                const lat = try ve.encode(vin);
++                defer free(lat);
++                const pack = try packEditLatent(lat, s);
++                try mlx.check(mlx.mlx_array_eval(pack));
++                try ref_packs.append(allocator, pack);
++                try ref_shapes.append(allocator, .{ .h = lat_h, .w = lat_w });
++            }
++        }
++        _ = mlx.mlx_clear_cache();
++        const ref_latents = try concat(ref_packs.items, 1, s);
++        defer free(ref_latents);
++        try mlx.check(mlx.mlx_array_eval(ref_latents));
++        logMemory("edit VAE refs");
++
++        // VLM pixels use the same canvas in this first MLX implementation.
++        // This preserves the original asset resolution and keeps 32-GB Macs
++        // below the official 1-MP reference-preprocess peak.
++        for (edit_bytes) |b| {
++            const vlm = try decodeEditRefVlm(allocator, b, width, height, s);
++            try pv_chunks.append(allocator, vlm.pv);
++            try grids.append(allocator, .{ 1, @intCast(vlm.gh), @intCast(vlm.gw) });
++            try ntoks.append(allocator, vlm.ntok);
++        }
++        const pixel_values = try concat(pv_chunks.items, 0, s);
++        defer free(pixel_values);
++
++        var pr = try buildQwen21EditPrompt(&self.tok, allocator, prompt, ntoks.items, self.drop_tokens);
++        defer pr.deinit(allocator);
++
++        // Stage 2: Qwen3-VL language trunk + the official BF16 vision tower.
++        // Materialize the conditioning, then free both before DiT denoise.
++        const txt = blk: {
++            const vis_path = try std.fmt.allocPrint(allocator, "{s}/text_encoder/qwen21_visual.safetensors", .{self.model_dir});
++            defer allocator.free(vis_path);
++            var vw = try model_mod.loadWeightsSingleFileWithVision(allocator, vis_path);
++            defer vw.deinit();
++            var vit = try VisionTower.loadFrom(allocator, s, &vw, QWEN21_VIT, COMPUTE);
++            defer vit.deinit();
++
++            var temporary_te: ?TextEncoder = null;
++            const te: *TextEncoder = if (self.te) |*resident| resident else te_blk: {
++                temporary_te = try TextEncoder.load(self.io, self.allocator, s, self.model_dir, COMPUTE);
++                break :te_blk &temporary_te.?;
++            };
++            defer if (temporary_te) |*tenc| tenc.deinit();
++
++            const enc = try te.encodeEditWithOptions(
++                &vit,
++                pr.ids,
++                pr.mask,
++                pixel_values,
++                grids.items,
++                self.drop_tokens,
++                false,
++            );
++            if (enc.keep != @as(c_int, @intCast(pr.pad_after_drop.len))) {
++                free(enc.embeddings);
++                return error.QwenImageEditConditioningMismatch;
++            }
++            try mlx.check(mlx.mlx_array_eval(enc.embeddings));
++            break :blk enc.embeddings;
++        };
++        defer free(txt);
++        _ = mlx.mlx_clear_cache();
++        logMemory("edit Qwen3-VL conditioning");
++
++        var geo = try EditGeometry.init(
++            allocator,
++            self.dit_cfg,
++            pr.pad_after_drop,
++            ref_shapes.items,
++            lat_h,
++            lat_w,
++        );
++        defer geo.deinit();
++
++        const sigmas = try computeSigmas(allocator, n_steps, @intCast(n_target));
++        defer allocator.free(sigmas);
++
++        var key = mlx.mlx_array_new();
++        defer free(key);
++        try mlx.check(mlx.mlx_random_key(&key, seed));
++        const nsh = [_]c_int{ 1, n_target, z };
++        var noise = mlx.mlx_array_new();
++        defer free(noise);
++        try mlx.check(mlx.mlx_random_normal(&noise, &nsh, 3, .float32, 0.0, 1.0, key, s));
++        var target = try astype(noise, COMPUTE, s);
++        defer free(target);
++
++        for (0..n_steps) |i| {
++            if (progress) |p| if (p.cancelled()) return error.Cancelled;
++            const v = try self.dit.forwardEdit(target, ref_latents, txt, pr.pad_after_drop, sigmas[i], &geo);
++            defer free(v);
++            const dv = try mulScalar(v, sigmas[i + 1] - sigmas[i], s);
++            defer free(dv);
++            const next = try addA(target, dv, s);
++            free(target);
++            target = next;
++            try mlx.check(mlx.mlx_array_eval(target));
++            if (progress) |p| p.emit("Generating edit", @intCast(i + 1), n_steps);
++        }
++
++        logMemory("edit denoise");
++        if (progress) |p| p.emit("Decoding image", n_steps, n_steps);
++        const grid = try reshape(target, &[_]c_int{ 1, @intCast(lat_h), @intCast(lat_w), z }, s);
++        defer free(grid);
++        const latent = try transpose(grid, &[_]c_int{ 0, 3, 1, 2 }, s);
++        defer free(latent);
++        const decoded = try self.vae.decode(latent);
++        defer free(decoded);
++        try mlx.check(mlx.mlx_array_eval(decoded));
++        return denormImage(decoded, s);
++    }
++
+     /// img2img start latent: (1 − σ)·encode(source) + σ·noise, packed [1, N, z].
+     fn noisedSource(self: *Engine, pixels: A, noise: A, sigma: f32) !A {
+         const s = self.s;

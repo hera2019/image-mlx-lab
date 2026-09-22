@@ -1,0 +1,65 @@
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / web tooling
+node_modules/
+
+# Local runtimes / source worktrees / toolchains
+worktrees/
+.zig-cache/
+zig-cache/
+zig-out/
+.zig-toolchain/
+
+# NEVER publish user inputs, generated images, masks, performance logs, or local library
+results/
+
+# Workbench local backups and UI test captures
+web/mask-editor/backups/
+web/mask-editor/*preview*.png
+web/mask-editor/*.before-workbench.*
+web/mask-editor/*.before-*.html
+web/mask-editor/*.before-*.py
+
+# Runtime logs / temp files
+*.log
+*.pid
+*.tmp
+*.temp
+*.cache
+
+# Model weights / large local artifacts if ever copied into this repo
+*.safetensors
+*.gguf
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.bin
+models/
+model-cache/
+downloads/
+
+# Local secrets / env
+.env
+.env.*
+!.env.example
+
+# Legacy local launcher names; public repo uses Image MLX Lab launchers.
+Start-Mask-Editor.command
+Start-Qwen-Workbench.command
+Stop-Mask-Editor.command
+Stop-Qwen-Workbench.command
