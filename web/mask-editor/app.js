@@ -2,7 +2,7 @@ const SAMPLE="/results/generated/This_is_an_RGBA_image_wi_20260922-145953-981170
 const $=id=>document.getElementById(id);
 const tabs=[...document.querySelectorAll(".tabs button")];
 const panels={generate:$("panel-generate"),variation:$("panel-variation"),edit:$("panel-edit")};
-const genWorkspace=$("generationWorkspace"),editorWorkspace=$("editorWorkspace");
+const genControls=$("genControls"),editorTools=$("editorTools");
 const qwenBadge=$("qwenBadge"),memBadge=$("memBadge"),statusText=$("statusText"),perfBox=$("perfBox");
 const sizePreset=$("sizePreset"),widthInput=$("widthInput"),heightInput=$("heightInput"),stepsInput=$("stepsInput"),seedInput=$("seedInput"),tokenHint=$("tokenHint");
 
@@ -58,17 +58,40 @@ function cloneCanvas(src){
   const c=document.createElement("canvas");c.width=src.width;c.height=src.height;c.getContext("2d").drawImage(src,0,0);return c;
 }
 
+function currentMainAsset(){
+  if(!workCanvas.width)return null;
+  const dataUrl=workCanvas.toDataURL("image/png");
+  return {
+    ...(editorSource||{}),
+    name:editorSource?.name||"current-main.png",
+    dataUrl,
+    b64:dataUrlToB64(dataUrl),
+    w:workCanvas.width,
+    h:workCanvas.height,
+  };
+}
+function syncCurrentMainToMode(){
+  const current=currentMainAsset();if(!current)return;
+  if(mode==="variation"){
+    variationAsset=current;
+    $("variationInfo").textContent=current.name+" · "+current.w+"×"+current.h;
+  }else if(mode==="edit"){
+    editAsset=current;
+    $("editInfo").textContent=current.name+" · "+current.w+"×"+current.h;
+  }
+}
 function setMode(next){
   mode=next;
   tabs.forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
-  if(mode==="editor"){
-    genWorkspace.classList.add("hidden");editorWorkspace.classList.remove("hidden");
-    renderEditor();refreshAssets();
-  }else{
-    genWorkspace.classList.remove("hidden");editorWorkspace.classList.add("hidden");
-    Object.entries(panels).forEach(([k,p])=>p.classList.toggle("hidden",k!==mode));
+  const editing=mode==="editor";
+  genControls.classList.toggle("hidden",editing);
+  editorTools.classList.toggle("hidden",!editing);
+  Object.entries(panels).forEach(([k,p])=>p.classList.toggle("hidden",editing||k!==mode));
+  if(!editing){
+    syncCurrentMainToMode();
     if(sizePreset.value==="auto")autoGenSize();else updateTokenHint();
   }
+  renderEditor();
 }
 tabs.forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 
@@ -106,9 +129,10 @@ async function persistLoadedAsset(a){
 async function chooseGenOne(input,which){
   const f=input.files?.[0];if(!f)return;
   try{
-    const a=await fileAsset(f);persistLoadedAsset(a);
+    const a=await fileAsset(f),saved=await persistLoadedAsset(a);
     if(which==="variation"){variationAsset=a;$("variationInfo").textContent=a.name+" · "+a.w+"×"+a.h}
     else{editAsset=a;$("editInfo").textContent=a.name+" · "+a.w+"×"+a.h}
+    if(saved)await openEditorAsset(saved);
     if(sizePreset.value==="auto")autoGenSize();
   }catch(e){notify("图片读取失败："+e.message,"gen")}
 }
@@ -116,9 +140,10 @@ $("variationFile").onchange=e=>chooseGenOne(e.target,"variation");
 $("editFile").onchange=e=>chooseGenOne(e.target,"edit");
 async function loadSample(which){
   try{
-    const a=await remoteAsset(SAMPLE,"测试透明鱼.png");
-    if(which==="variation"){variationAsset=a;$("variationInfo").textContent=a.name+" · "+a.w+"×"+a.h}
-    else{editAsset=a;$("editInfo").textContent=a.name+" · "+a.w+"×"+a.h}
+    await openEditorAsset({url:SAMPLE,name:"测试透明鱼.png",kind:"generated"});
+    if(which==="variation")variationAsset=editorSource;
+    else editAsset=editorSource;
+    syncCurrentMainToMode();
     if(sizePreset.value==="auto")autoGenSize();
   }catch(e){notify(e.message,"gen")}
 }
@@ -151,11 +176,8 @@ function showPerf(p){
   if(perfBox)perfBox.textContent=genPerfText;
 }
 function showGenResult(dataUrl,url){
-  lastGen={dataUrl,url};$("genEmpty").classList.add("hidden");$("genResultWrap").classList.remove("hidden");$("genActions").classList.remove("hidden");
-  $("genResultImg").src=dataUrl;$("downloadResult").href=url||dataUrl;
+  lastGen={dataUrl,url};
 }
-async function openGeneratedInEditor(){if(!lastGen)return;if(lastGen.url)return openEditorByUrl(lastGen.url);const a=await assetFromDataUrl("generated.png",lastGen.dataUrl);const saved=await saveTempAsset(a,"generated.png");if(saved)openEditorAsset(saved)}
-$("genResultWrap").onclick=openGeneratedInEditor;$("openResultEditor").onclick=openGeneratedInEditor;
 $("runBtn").onclick=async()=>{
   const w=round32(+widthInput.value),h=round32(+heightInput.value),size=w+"x"+h,steps=+stepsInput.value||20,seed=+seedInput.value||42;
   let endpoint,payload;
@@ -177,7 +199,9 @@ $("runBtn").onclick=async()=>{
     const dataUrl="data:image/png;base64,"+j.b64_json;showGenResult(dataUrl,j.output_url);showPerf(j.perf);
     await Promise.all([loadHistory(),refreshAssets()]);
     await new Promise(r=>setTimeout(r,80));await refreshAssets();
-    notify("生成完成 · 浏览器总等待 "+((performance.now()-t0)/1000).toFixed(2)+" s\n"+genPerfText+"\n已加入右侧图片库。","gen");
+    if(j.output_url)await openEditorByUrl(j.output_url);
+    notify("生成完成 · 浏览器总等待 "+((performance.now()-t0)/1000).toFixed(2)+" s\n"+genPerfText+
+      "\n新图已显示在中间主窗口，并加入右侧图片库；原图/上一代仍保留在右侧。","gen");
   }catch(e){notify("生成失败："+e.message,"gen")}finally{$("runBtn").disabled=false;$("runBtn").textContent=oldRunText}
 };
 
@@ -225,11 +249,15 @@ $("editorUpload").onchange=async e=>{
 async function openEditorByUrl(url){const a=assets.find(x=>x.url===url)||{url,name:url.split("/").pop(),kind:"generated"};return openEditorAsset(a)}
 async function openEditorAsset(item){
   try{
-    const img=await imgFromUrl(item.url);editorSource={...item,w:img.naturalWidth,h:img.naturalHeight,img};
-    workCanvas.width=img.naturalWidth;workCanvas.height=img.naturalHeight;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(img,0,0);
+    const a=await remoteAsset(item.url,item.name);
+    editorSource={...item,...a,url:item.url,kind:item.kind||"generated"};
+    workCanvas.width=a.w;workCanvas.height=a.h;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(a.img,0,0);
     resetSelection();floating=null;clipboardControls();resetAdjust(false);resetWorkHistory();syncEditorSizeInputs();
-    setMode("editor");$("editorTitle").textContent=item.name;notify("正在编辑副本 · 原图保持不变。","editor",false);renderEditor();renderAssets();
-  }catch(e){notify("无法打开图片："+e.message,"editor")}
+    syncCurrentMainToMode();
+    $("editorTitle").textContent=item.name;
+    notify("当前主图："+item.name+"\n顶部模式未改变；右侧可继续切换其他图片比较。",mode==="editor"?"editor":"gen",false);
+    renderEditor();renderAssets();
+  }catch(e){notify("无法打开图片："+e.message,mode==="editor"?"editor":"gen")}
 }
 function resetSelection(){
   selectionCanvas.width=workCanvas.width;selectionCanvas.height=workCanvas.height;selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);updateMaskInfo();
@@ -320,18 +348,21 @@ function applyViewZoom(){
   currentViewScale=s;const w=workCanvas.width*s,h=workCanvas.height*s;editorStage.style.width=w+"px";editorStage.style.height=h+"px";
   for(const c of [sourceCanvas,overlayCanvas]){c.style.width=w+"px";c.style.height=h+"px"}
 }
-zoomSelect.onchange=applyViewZoom;$("zoomOut").onclick=()=>{currentViewScale=Math.max(.05,currentViewScale/1.25);zoomSelect.value="custom";applyViewZoom()};$("zoomIn").onclick=()=>{currentViewScale=Math.min(8,currentViewScale*1.25);zoomSelect.value="custom";applyViewZoom()};window.addEventListener("resize",()=>{if(mode==="editor"&&zoomSelect.value==="fit")applyViewZoom()});
+zoomSelect.onchange=applyViewZoom;$("zoomOut").onclick=()=>{currentViewScale=Math.max(.05,currentViewScale/1.25);zoomSelect.value="custom";applyViewZoom()};$("zoomIn").onclick=()=>{currentViewScale=Math.min(8,currentViewScale*1.25);zoomSelect.value="custom";applyViewZoom()};window.addEventListener("resize",()=>{if(zoomSelect.value==="fit")applyViewZoom()});
 
 function renderEditor(){
   if(!workCanvas.width){$("editorEmpty").classList.remove("hidden");editorViewport.classList.add("hidden");return}
   $("editorEmpty").classList.add("hidden");editorViewport.classList.remove("hidden");
   sourceCanvas.width=overlayCanvas.width=workCanvas.width;sourceCanvas.height=overlayCanvas.height=workCanvas.height;
+  overlayCanvas.style.pointerEvents=mode==="editor"?"auto":"none";
+  overlayCanvas.style.cursor=mode==="editor"?"crosshair":"default";
   displayCtx.clearRect(0,0,sourceCanvas.width,sourceCanvas.height);displayCtx.drawImage(adjustmentChanged()?buildAdjustedCanvas():workCanvas,0,0);
   renderOverlay();applyViewZoom();$("editorMeta").textContent=workCanvas.width+"×"+workCanvas.height+" · "+(editorSource?.kind?kindLabel(editorSource.kind):"草稿");updateMaskInfo();
 }
 let antsPhase=0;
 function renderOverlay(){
   overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+  if(mode!=="editor")return;
   if($("showMask").checked&&selectionCanvas.width){
     const w=selectionCanvas.width,h=selectionCanvas.height,d=selCtx.getImageData(0,0,w,h),o=overlayCtx.createImageData(w,h),src=d.data,dst=o.data;
     for(let i=0;i<src.length;i+=4){const a=src[i+3];if(a){dst[i]=255;dst[i+1]=35;dst[i+2]=65;dst[i+3]=Math.round(a*.20)}}

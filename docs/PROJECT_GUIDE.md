@@ -45,6 +45,11 @@ Before any public release, run `python3 scripts/check_public_release.py` and rev
 ## UI and editing invariants
 
 - Top-level modes: text-to-image, variation, True Edit, image editor.
+- The four top-level mode buttons change **only the left tool sidebar**.
+- The center main-image viewport and the right image library remain present in every mode.
+- Clicking an image in the right library changes the center current/main image and must not switch the top-level mode.
+- When entering Variation or True Edit, the center current image automatically becomes that mode's main/source image.
+- After a generation finishes, the new result becomes the center current image and is added to the right library; earlier/original generations remain available in the library for comparison.
 - Editing is non-destructive: source images remain unchanged unless the user explicitly deletes them.
 - Saving an edit always creates a new image object/file.
 - The right image library may show loaded, generated, edited, and intermediate images; intermediate images must be clearly labeled and not confused with final outputs.
