@@ -50,11 +50,14 @@ Before any public release, run `python3 scripts/check_public_release.py` and rev
 - Clicking an image in the right library changes the center current/main image and must not switch the top-level mode.
 - When entering Variation or True Edit, the center current image automatically becomes that mode's main/source image.
 - After a generation finishes, the new result becomes the center current image and is added to the right library; earlier/original generations remain available in the library for comparison.
-- Editing is non-destructive: source images remain unchanged unless the user explicitly deletes them.
-- Saving an edit always creates a new image object/file.
+- Editing is non-destructive by default.
+- Manual editor saves offer two explicit choices: **Save as new image** (default/non-destructive) or **Overwrite current image**. Overwrite requires explicit confirmation and is allowed only for files managed inside the Workbench results library.
+- The editor tracks a saved history index. Undo/Redo must restore exact image + Mask snapshots symmetrically, and the UI must indicate whether the current draft has unsaved pixel changes.
+- When switching to another image with unsaved changes, never silently discard the draft. Offer: save as new + switch, overwrite current + switch (when allowed), discard + switch, or cancel.
 - The right image library may show loaded, generated, edited, and intermediate images; intermediate images must be clearly labeled and not confused with final outputs.
 - If an image selection exists, brightness/contrast/saturation/blur/sharpen operate on the selection; otherwise they operate on the whole image.
-- Copy/Cut/Paste must work across images. Paste remains a temporary layer until confirmed and supports position, proportional/non-proportional size, and opacity.
+- Viewer zoom is center-anchored: changing zoom must preserve the same image coordinate at the center of the viewport (within normal pixel rounding).
+- Copy/Cut/Paste must work across images. Paste remains a temporary layer until confirmed and supports position, proportional/non-proportional size, and opacity. After Paste is confirmed, the selection must follow the pasted content's transformed position/size so the user can immediately continue editing that region.
 - Mask is both a normal selection mechanism and the control region for AI local edit.
 - AI local edit must freeze the source image and Mask at request start.
 - AI local edit offers four context modes: Auto, Local-first, Local + full-image reference, and Full-frame.

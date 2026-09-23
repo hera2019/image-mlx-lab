@@ -135,3 +135,13 @@ hr{margin:10px 0}.big{padding:7px;margin-top:6px}.wideBtn{margin-top:4px}
   .globalBrand{justify-content:flex-start}
   .brandIcon{width:26px;height:26px}
 }
+
+/* v17 draft save/switch */
+.draftSwitchDialog{border:1px solid #cfd7e2;border-radius:12px;padding:0;max-width:520px;width:min(520px,calc(100vw - 28px));box-shadow:0 18px 60px #0004}
+.draftSwitchDialog::backdrop{background:#15203366;backdrop-filter:blur(2px)}
+.draftSwitchDialog form{padding:18px}
+.draftSwitchDialog h3{margin:0 0 8px;font-size:16px}
+.draftSwitchDialog p{margin:0 0 14px;color:#5f6b7a;line-height:1.5}
+.draftSwitchActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.draftSwitchActions button{min-height:34px}
+.historyStrip{flex-wrap:wrap}

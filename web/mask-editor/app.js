@@ -7,7 +7,7 @@ const sizePreset=$("sizePreset"),widthInput=$("widthInput"),heightInput=$("heigh
 
 let mode="generate",variationAsset=null,editAsset=null,editRefQueue=[],lastGen=null,assets=[];
 let editorSource=null,currentViewScale=1,selectionTool="rect",drawing=false,lastPoint=null,shapeStart=null,shapeBase=null;
-let workHistory=[],workHistoryIndex=-1,clipboard=null,floating=null,dragStart=null,adjustTimer=null;
+let workHistory=[],workHistoryIndex=-1,savedHistoryIndex=-1,clipboard=null,floating=null,dragStart=null,adjustTimer=null;
 
 const workCanvas=document.createElement("canvas"),workCtx=workCanvas.getContext("2d",{willReadFrequently:true});
 const selectionCanvas=document.createElement("canvas"),selCtx=selectionCanvas.getContext("2d",{willReadFrequently:true});
@@ -139,7 +139,7 @@ async function chooseGenOne(input,which){
     const a=await fileAsset(f),saved=await persistLoadedAsset(a);
     if(which==="variation"){variationAsset=a;$("variationInfo").textContent=a.name+" · "+a.w+"×"+a.h}
     else{editAsset=a;$("editInfo").textContent=a.name+" · "+a.w+"×"+a.h}
-    if(saved)await openEditorAsset(saved);
+    if(saved)await requestOpenEditorAsset(saved);
     if(sizePreset.value==="auto")autoGenSize();
   }catch(e){notify("图片读取失败："+e.message,"gen")}
 }
@@ -212,12 +212,12 @@ function renderAssets(){
   if(!list.length){box.innerHTML="<div class='fileInfo'>暂无图片</div>";return}
   list.forEach(a=>{
     const card=document.createElement("div");card.className="assetCard"+(editorSource?.url===a.url?" active":"");
-    const img=document.createElement("img");img.src=a.url;img.loading="lazy";
+    const img=document.createElement("img");img.src=a.url+(a.mtime?("?v="+Math.round(a.mtime*1000)):"");img.loading="lazy";
     const meta=document.createElement("div");meta.className="assetMeta";meta.innerHTML="<b>"+escapeHtml(a.name)+"</b>"+kindLabel(a.kind)+" · "+formatBytes(a.bytes);
     const ops=document.createElement("div");ops.className="assetOps";
     const dl=document.createElement("a");dl.href=a.url;dl.download=a.name;dl.textContent="下载";dl.onclick=e=>e.stopPropagation();
     const del=document.createElement("button");del.className="danger";del.textContent="删除";del.onclick=e=>{e.stopPropagation();deleteAsset(a)};
-    ops.append(dl,del);card.append(img,meta,ops);card.onclick=()=>openEditorAsset(a);box.append(card);
+    ops.append(dl,del);card.append(img,meta,ops);card.onclick=()=>requestOpenEditorAsset(a);box.append(card);
   });
 }
 function kindLabel(k){return k==="loaded"?"载入":k==="edited"?"编辑":k==="intermediate"?"中间/原始AI":"生成"}
@@ -239,11 +239,39 @@ $("editorUpload").onchange=async e=>{
   const files=[...(e.target.files||[])];if(!files.length)return;
   let first=null;
   for(const f of files){const a=await fileAsset(f);const saved=await saveTempAsset(a,f.name);if(!first)first=saved}
-  e.target.value="";if(first)openEditorAsset(first);
+  e.target.value="";if(first)requestOpenEditorAsset(first);
 };
 
 /* ---------- 编辑器草稿 ---------- */
 async function openEditorByUrl(url){const a=assets.find(x=>x.url===url)||{url,name:url.split("/").pop(),kind:"generated"};return openEditorAsset(a)}
+function canOverwriteCurrent(){return /^\/results\/(web|library|intermediate)\//.test(editorSource?.url||"")}
+function isEditorDirty(){return workHistoryIndex>=0&&savedHistoryIndex!==workHistoryIndex}
+function updateDirtyUI(){
+  const dirty=isEditorDirty();
+  if($("overwriteEditor"))$("overwriteEditor").disabled=!workCanvas.width||!canOverwriteCurrent();
+  if($("saveEditor"))$("saveEditor").disabled=!workCanvas.width;
+  return dirty;
+}
+function askDraftSwitch(target){
+  const dialog=$("draftSwitchDialog"),overwrite=$("draftOverwriteChoice");
+  overwrite.disabled=!canOverwriteCurrent();
+  $("draftSwitchMessage").textContent="“"+(editorSource?.name||"当前图片")+"”有未保存修改。切换到“"+target.name+"”前，请选择如何处理。";
+  return new Promise(resolve=>{
+    const done=()=>{dialog.removeEventListener("close",done);resolve(dialog.returnValue||"cancel")};
+    dialog.addEventListener("close",done,{once:true});dialog.showModal();
+  });
+}
+async function requestOpenEditorAsset(item){
+  if(editorSource?.url&&item.url===editorSource.url)return true;
+  if(floating){notify("当前还有 Paste 预览，请先确定或取消 Paste，再切换图片。","editor","important");return false}
+  if(isEditorDirty()||adjustmentChanged()){
+    const action=await askDraftSwitch(item);
+    if(action==="cancel"||!action)return false;
+    if(action==="save-new"&&!(await saveEditorAsNew({quiet:true})))return false;
+    if(action==="overwrite"&&!(await overwriteCurrentEditor({confirmed:true,quiet:true})))return false;
+  }
+  await openEditorAsset(item);return true;
+}
 async function openEditorAsset(item){
   try{
     const a=await remoteAsset(item.url,item.name);
@@ -271,25 +299,61 @@ function maskBBox(maskCanvas=selectionCanvas){
 }
 function selectionBBox(){return maskBBox(selectionCanvas)}
 function updateMaskInfo(){$("maskCoverage").textContent="选区 "+(selectionCoverage()*100).toFixed(1)+"%"}
-function resetWorkHistory(){workHistory=[snapshotWork()];workHistoryIndex=0;updateUndo()}
-function snapshotWork(){return{image:workCanvas.toDataURL("image/png"),mask:selectionCanvas.toDataURL("image/png")}}
-function pushWorkHistory(){workHistory=workHistory.slice(0,workHistoryIndex+1);workHistory.push(snapshotWork());workHistoryIndex=workHistory.length-1;if(workHistory.length>20){workHistory.shift();workHistoryIndex--}updateUndo()}
-function updateUndo(){$("undoImage").disabled=workHistoryIndex<=0;$("redoImage").disabled=workHistoryIndex>=workHistory.length-1}
-async function restoreWork(i){
-  if(i<0||i>=workHistory.length)return;const s=workHistory[i],im=await imgFromUrl(s.image),mm=await imgFromUrl(s.mask);workHistoryIndex=i;
-  workCanvas.width=im.naturalWidth;workCanvas.height=im.naturalHeight;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(im,0,0);
-  selectionCanvas.width=workCanvas.width;selectionCanvas.height=workCanvas.height;selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);selCtx.drawImage(mm,0,0);
+function resetWorkHistory(){workHistory=[snapshotWork()];workHistoryIndex=0;savedHistoryIndex=0;updateUndo()}
+function snapshotWork(){return{image:cloneCanvas(workCanvas),mask:cloneCanvas(selectionCanvas)}}
+function pushWorkHistory(){
+  if(savedHistoryIndex>workHistoryIndex)savedHistoryIndex=-1;
+  workHistory=workHistory.slice(0,workHistoryIndex+1);
+  workHistory.push(snapshotWork());workHistoryIndex=workHistory.length-1;
+  if(workHistory.length>20){workHistory.shift();workHistoryIndex--;if(savedHistoryIndex>=0)savedHistoryIndex--}
+  updateUndo();
+}
+function updateUndo(){
+  $("undoImage").disabled=workHistoryIndex<=0;$("redoImage").disabled=workHistoryIndex>=workHistory.length-1;updateDirtyUI();
+}
+function restoreWork(i){
+  if(i<0||i>=workHistory.length)return;const s=workHistory[i];workHistoryIndex=i;
+  workCanvas.width=s.image.width;workCanvas.height=s.image.height;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(s.image,0,0);
+  selectionCanvas.width=s.mask.width;selectionCanvas.height=s.mask.height;selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);selCtx.drawImage(s.mask,0,0);
   floating=null;resetAdjust(false);syncEditorSizeInputs();updateUndo();renderEditor();
 }
 $("undoImage").onclick=()=>restoreWork(workHistoryIndex-1);$("redoImage").onclick=()=>restoreWork(workHistoryIndex+1);
 $("resetDraft").onclick=async()=>{if(!editorSource?.url)return;await openEditorAsset(editorSource)};
 $("downloadDraft").onclick=()=>{if(!workCanvas.width)return;const a=document.createElement("a");a.download="draft_"+(editorSource?.name||"image.png");a.href=workCanvas.toDataURL("image/png");a.click()};
-$("saveEditor").onclick=async()=>{
-  if(!workCanvas.width){notify("请先选择图片。","editor");return}if(floating){notify("请先确定或取消当前 Paste。","editor");return}
+async function materializePendingAdjustments(){
+  if(!adjustmentChanged())return;
+  commitWork(buildAdjustedCanvas(),selectionCanvas,"图像调整",false);resetAdjust(false);
+}
+async function saveEditorAsNew({quiet=false}={}){
+  if(!workCanvas.width){notify("请先选择图片。","editor");return false}
+  if(floating){notify("请先确定或取消当前 Paste。","editor","important");return false}
+  await materializePendingAdjustments();
   const name=(editorSource?.name||"image").replace(/\.[^.]+$/,"")+"_edit";
-  const r=await fetch("/api/save-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_b64:dataUrlToB64(workCanvas.toDataURL("image/png")),name,source_url:editorSource?.url})}),j=await r.json();
-  if(!r.ok){notify(j.error||"保存失败","editor");return}notify("已保存为新图片 · 原图未修改。右侧图片库已新增结果。","editor");await refreshAssets();
-};
+  const r=await fetch("/api/save-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_b64:dataUrlToB64(workCanvas.toDataURL("image/png")),name,source_url:editorSource?.url,edit_kind:"manual"})}),j=await r.json();
+  if(!r.ok){notify(j.error||"保存失败","editor");return false}
+  await refreshAssets();
+  const saved=assets.find(a=>a.url===j.url)||{url:j.url,name:j.name,kind:j.kind};
+  editorSource={...editorSource,...saved,url:j.url,name:j.name,kind:j.kind};
+  savedHistoryIndex=workHistoryIndex;updateUndo();$("editorTitle").textContent=j.name;renderAssets();renderEditor();
+  if(!quiet)notify("已保存为新图片 · 原图保留；当前编辑对象已切换到新图。","editor","important");
+  return true;
+}
+async function overwriteCurrentEditor({confirmed=false,quiet=false}={}){
+  if(!workCanvas.width){notify("请先选择图片。","editor");return false}
+  if(floating){notify("请先确定或取消当前 Paste。","editor","important");return false}
+  if(!canOverwriteCurrent()){notify("当前图片不是 Workbench 管理的本地图片，不能覆盖；请使用“保存为新图”。","editor","important");return false}
+  if(!confirmed&&!confirm("覆盖当前图片？\n\n"+editorSource.name+"\n\n这个操作会替换图片库中的当前文件。"))return false;
+  await materializePendingAdjustments();
+  const r=await fetch("/api/overwrite-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_b64:dataUrlToB64(workCanvas.toDataURL("image/png")),source_url:editorSource.url})}),j=await r.json();
+  if(!r.ok){notify(j.error||"覆盖保存失败","editor");return false}
+  await refreshAssets();
+  const latest=assets.find(a=>a.url===editorSource.url);if(latest)editorSource={...editorSource,...latest};
+  savedHistoryIndex=workHistoryIndex;updateUndo();renderAssets();renderEditor();
+  if(!quiet)notify("已覆盖保存当前图片："+editorSource.name,"editor","important");
+  return true;
+}
+$("saveEditor").onclick=()=>saveEditorAsNew();
+$("overwriteEditor").onclick=()=>overwriteCurrentEditor();
 
 function syncEditorSizeInputs(){$("resizeW").value=workCanvas.width||"";$("resizeH").value=workCanvas.height||""}
 function resetAdjust(redraw=true){
@@ -330,25 +394,51 @@ function buildAdjustedCanvas(){
 ["brightness","contrast","saturation","blur","sharpen"].forEach(id=>$(id).oninput=e=>{$(id+"Val").textContent=e.target.value;clearTimeout(adjustTimer);adjustTimer=setTimeout(renderEditor,50)});
 $("resetAdjust").onclick=()=>resetAdjust();
 $("applyAdjust").onclick=()=>{if(!workCanvas.width||!adjustmentChanged())return;commitWork(buildAdjustedCanvas(),selectionCanvas,"图像调整");resetAdjust(false)};
-function commitWork(newCanvas,newMask=selectionCanvas,label="编辑"){
+function commitWork(newCanvas,newMask=selectionCanvas,label="编辑",announce=true){
   workCanvas.width=newCanvas.width;workCanvas.height=newCanvas.height;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(newCanvas,0,0);
   if(newMask!==selectionCanvas||selectionCanvas.width!==workCanvas.width||selectionCanvas.height!==workCanvas.height){
     const tmp=document.createElement("canvas");tmp.width=workCanvas.width;tmp.height=workCanvas.height;tmp.getContext("2d").drawImage(newMask,0,0,workCanvas.width,workCanvas.height);
     selectionCanvas.width=workCanvas.width;selectionCanvas.height=workCanvas.height;selCtx.clearRect(0,0,workCanvas.width,workCanvas.height);selCtx.drawImage(tmp,0,0);
   }
-  syncEditorSizeInputs();pushWorkHistory();renderEditor();notify(label+"完成 · 尚未覆盖原图。","editor");
+  syncEditorSizeInputs();pushWorkHistory();renderEditor();if(announce)notify(label+"完成 · 尚未保存。","editor");
 }
 
 /* 浏览 */
 const zoomSelect=$("viewZoom");zoomSelect.add(new Option("自定义","custom"));
-function applyViewZoom(){
-  if(!workCanvas.width)return;let s;
-  if(zoomSelect.value==="fit"){const aw=Math.max(260,editorViewport.clientWidth-36),ah=Math.max(320,window.innerHeight*.68);s=Math.min(1,aw/workCanvas.width,ah/workCanvas.height)}
-  else if(zoomSelect.value==="custom")s=currentViewScale;else s=+zoomSelect.value;
-  currentViewScale=s;const w=workCanvas.width*s,h=workCanvas.height*s;editorStage.style.width=w+"px";editorStage.style.height=h+"px";
-  for(const c of [sourceCanvas,overlayCanvas]){c.style.width=w+"px";c.style.height=h+"px"}
+function viewportGeometry(scale=currentViewScale){
+  const cs=getComputedStyle(editorViewport);
+  const pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0;
+  const availW=Math.max(1,editorViewport.clientWidth-pl-pr),availH=Math.max(1,editorViewport.clientHeight-pt-pb);
+  const w=workCanvas.width*scale,h=workCanvas.height*scale;
+  return{pl,pr,pt,pb,availW,availH,w,h,mx:Math.max(0,(availW-w)/2),my:Math.max(0,(availH-h)/2)};
 }
-zoomSelect.onchange=applyViewZoom;$("zoomOut").onclick=()=>{currentViewScale=Math.max(.05,currentViewScale/1.25);zoomSelect.value="custom";applyViewZoom()};$("zoomIn").onclick=()=>{currentViewScale=Math.min(8,currentViewScale*1.25);zoomSelect.value="custom";applyViewZoom()};window.addEventListener("resize",()=>{if(zoomSelect.value==="fit")applyViewZoom()});
+function viewCenterImagePoint(){
+  const g=viewportGeometry(currentViewScale||1),ml=parseFloat(editorStage.style.marginLeft)||g.mx,mt=parseFloat(editorStage.style.marginTop)||g.my;
+  let x=(editorViewport.scrollLeft+editorViewport.clientWidth/2-g.pl-ml)/(currentViewScale||1);
+  let y=(editorViewport.scrollTop+editorViewport.clientHeight/2-g.pt-mt)/(currentViewScale||1);
+  if(g.w<=g.availW)x=workCanvas.width/2;if(g.h<=g.availH)y=workCanvas.height/2;
+  return{x:Math.max(0,Math.min(workCanvas.width,x)),y:Math.max(0,Math.min(workCanvas.height,y))};
+}
+function applyViewZoom(preserveCenter=true,forcedAnchor=null){
+  if(!workCanvas.width)return;
+  const anchor=forcedAnchor||(preserveCenter?viewCenterImagePoint():{x:workCanvas.width/2,y:workCanvas.height/2});
+  let s;
+  if(zoomSelect.value==="fit"){
+    const cs=getComputedStyle(editorViewport),pw=(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0),ph=(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0);
+    const aw=Math.max(260,editorViewport.clientWidth-pw),ah=Math.max(320,editorViewport.clientHeight-ph);
+    s=Math.min(1,aw/workCanvas.width,ah/workCanvas.height);
+  }else if(zoomSelect.value==="custom")s=currentViewScale;else s=+zoomSelect.value;
+  currentViewScale=s;
+  const g=viewportGeometry(s);
+  editorStage.style.width=g.w+"px";editorStage.style.height=g.h+"px";editorStage.style.marginLeft=g.mx+"px";editorStage.style.marginTop=g.my+"px";
+  for(const c of [sourceCanvas,overlayCanvas]){c.style.width=g.w+"px";c.style.height=g.h+"px"}
+  editorViewport.scrollLeft=Math.max(0,g.pl+g.mx+anchor.x*s-editorViewport.clientWidth/2);
+  editorViewport.scrollTop=Math.max(0,g.pt+g.my+anchor.y*s-editorViewport.clientHeight/2);
+}
+zoomSelect.onchange=()=>applyViewZoom(true);
+$("zoomOut").onclick=()=>{const anchor=viewCenterImagePoint();currentViewScale=Math.max(.05,currentViewScale/1.25);zoomSelect.value="custom";applyViewZoom(false,anchor)};
+$("zoomIn").onclick=()=>{const anchor=viewCenterImagePoint();currentViewScale=Math.min(8,currentViewScale*1.25);zoomSelect.value="custom";applyViewZoom(false,anchor)};
+window.addEventListener("resize",()=>{if(zoomSelect.value==="fit")applyViewZoom(true)});
 
 function renderEditor(){
   if(!workCanvas.width){$("editorEmpty").classList.remove("hidden");editorViewport.classList.add("hidden");return}
@@ -357,7 +447,7 @@ function renderEditor(){
   overlayCanvas.style.pointerEvents=mode==="editor"?"auto":"none";
   overlayCanvas.style.cursor=mode==="editor"?"crosshair":"default";
   displayCtx.clearRect(0,0,sourceCanvas.width,sourceCanvas.height);displayCtx.drawImage(adjustmentChanged()?buildAdjustedCanvas():workCanvas,0,0);
-  renderOverlay();applyViewZoom();$("editorMeta").textContent=workCanvas.width+"×"+workCanvas.height+" · "+(editorSource?.kind?kindLabel(editorSource.kind):"草稿");updateMaskInfo();
+  renderOverlay();applyViewZoom();$("editorMeta").textContent=workCanvas.width+"×"+workCanvas.height+" · "+(editorSource?.kind?kindLabel(editorSource.kind):"草稿")+(isEditorDirty()?" · 未保存":" · 已保存");updateMaskInfo();updateDirtyUI();
 }
 let antsPhase=0;
 function renderOverlay(){
@@ -420,20 +510,29 @@ function copySelectionToClipboard(cut=false){
   const b=selectionBBox();if(!b){notify("请先选择区域。","editor");return}
   const c=document.createElement("canvas");c.width=b.w;c.height=b.h;const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(workCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
   const mask=document.createElement("canvas");mask.width=b.w;mask.height=b.h;mask.getContext("2d").drawImage(selectionCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);x.globalCompositeOperation="destination-in";x.drawImage(mask,0,0);x.globalCompositeOperation="source-over";
-  clipboard={canvas:c,w:b.w,h:b.h,sourceName:editorSource?.name||"image",originX:b.x,originY:b.y};clipboardControls();
+  clipboard={canvas:c,mask,w:b.w,h:b.h,sourceName:editorSource?.name||"image",originX:b.x,originY:b.y};clipboardControls();
   if(cut){workCtx.save();workCtx.globalCompositeOperation="destination-out";workCtx.drawImage(selectionCanvas,0,0);workCtx.restore();pushWorkHistory();renderEditor();notify("Cut 完成 · 只修改当前草稿，原图仍保留。","editor")}
 }
 $("copySelection").onclick=()=>copySelectionToClipboard(false);$("cutSelection").onclick=()=>copySelectionToClipboard(true);
 function clipboardControls(){$("clipboardInfo").textContent=clipboard?("剪贴板："+clipboard.w+"×"+clipboard.h+" · "+clipboard.sourceName):"剪贴板为空";$("pasteClipboard").disabled=!clipboard}
 function startPaste(){
-  if(!clipboard||!workCanvas.width)return;floating={canvas:clipboard.canvas,w:clipboard.w,h:clipboard.h,x:Math.max(0,(workCanvas.width-clipboard.w)/2),y:Math.max(0,(workCanvas.height-clipboard.h)/2),aspect:clipboard.w/clipboard.h,opacity:1};
+  if(!clipboard||!workCanvas.width)return;floating={canvas:clipboard.canvas,mask:clipboard.mask,w:clipboard.w,h:clipboard.h,x:Math.max(0,(workCanvas.width-clipboard.w)/2),y:Math.max(0,(workCanvas.height-clipboard.h)/2),aspect:clipboard.w/clipboard.h,opacity:1};
   $("pasteW").value=Math.round(floating.w);$("pasteH").value=Math.round(floating.h);$("pasteOpacity").value=100;$("pasteOpacityVal").textContent=100;$("pasteControls").classList.remove("hidden");renderOverlay();notify("Paste 预览 · 拖动位置、调整宽高或透明度；确定前不会写入草稿。","editor");
 }
 $("pasteClipboard").onclick=startPaste;
 $("pasteW").oninput=()=>{if(!floating)return;let w=Math.max(1,+$("pasteW").value||1);floating.w=w;if($("pasteLockAspect").checked){floating.h=Math.max(1,Math.round(w/floating.aspect));$("pasteH").value=Math.round(floating.h)}renderOverlay()};
 $("pasteH").oninput=()=>{if(!floating)return;let h=Math.max(1,+$("pasteH").value||1);floating.h=h;if($("pasteLockAspect").checked){floating.w=Math.max(1,Math.round(h*floating.aspect));$("pasteW").value=Math.round(floating.w)}renderOverlay()};
 $("pasteOpacity").oninput=e=>{if(!floating)return;$("pasteOpacityVal").textContent=e.target.value;floating.opacity=+e.target.value/100;renderOverlay()};
-$("applyPaste").onclick=()=>{if(!floating)return;workCtx.save();workCtx.globalAlpha=floating.opacity??1;workCtx.drawImage(floating.canvas,floating.x,floating.y,floating.w,floating.h);workCtx.restore();floating=null;$("pasteControls").classList.add("hidden");pushWorkHistory();renderEditor();notify("Paste 已写入草稿 · 原图仍未修改。","editor")};
+$("applyPaste").onclick=()=>{
+  if(!floating)return;const f=floating;
+  workCtx.save();workCtx.globalAlpha=f.opacity??1;workCtx.drawImage(f.canvas,f.x,f.y,f.w,f.h);workCtx.restore();
+  // Paste 完成后，把选区移动/缩放到粘贴后的内容位置，便于继续调色或 AI 编辑。
+  selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);
+  if(f.mask)selCtx.drawImage(f.mask,f.x,f.y,f.w,f.h);
+  else{selCtx.fillStyle="#fff";selCtx.fillRect(f.x,f.y,f.w,f.h)}
+  floating=null;$("pasteControls").classList.add("hidden");pushWorkHistory();renderEditor();updateMaskInfo();
+  notify("Paste 已写入草稿；选区已跟随粘贴内容，可继续处理。","editor");
+};
 $("cancelPaste").onclick=()=>{floating=null;$("pasteControls").classList.add("hidden");renderOverlay()};
 
 /* 几何 */

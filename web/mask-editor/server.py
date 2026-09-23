@@ -95,14 +95,17 @@ def asset_items():
     items.sort(key=lambda x:x["mtime"],reverse=True)
     return items
 
-def resolve_deletable(url):
-    name=Path(str(url)).name
-    if not name or name in {".",".."}: raise ValueError("无效文件")
+def resolve_managed_file(url):
+    raw=str(url or "").split("?",1)[0]
+    if not raw: raise ValueError("无效文件")
+    target=(ROOT/raw.lstrip("/")).resolve()
     for root in (OUT_DIR,LIB_DIR,INTERMEDIATE_DIR):
-        target=(root/name).resolve()
         if target.parent==root.resolve() and target.is_file():
             return target
-    raise ValueError("只允许删除 Workbench 图片库中的文件")
+    raise ValueError("只允许操作 Workbench 图片库中的文件")
+
+def resolve_deletable(url):
+    return resolve_managed_file(url)
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*a,**kw):
@@ -173,6 +176,23 @@ class Handler(SimpleHTTPRequestHandler):
                         "mask_percent":req.get("mask_percent"),
                     })
                 return self._json(200,{"url":url,"name":path.name,"kind":kind})
+            except Exception as e:
+                return self._json(500,{"error":str(e)})
+
+        if self.path=="/api/overwrite-editor":
+            try:
+                req=self._body()
+                encoded=req["image_b64"]
+                source_url=req.get("source_url")
+                target=resolve_managed_file(source_url)
+                target.write_bytes(base64.b64decode(encoded))
+                append_perf({
+                    "started_at":now_iso(),"success":True,"mode":"editor-overwrite",
+                    "source_url":source_url,"output_url":source_url,
+                    "output_path":str(target),"output_bytes":decoded_size(encoded),
+                    "history_hidden":False,
+                })
+                return self._json(200,{"url":source_url,"name":target.name,"kind":"edited"})
             except Exception as e:
                 return self._json(500,{"error":str(e)})
 

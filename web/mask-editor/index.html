@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Image MLX Lab</title>
 <link rel="icon" type="image/svg+xml" href="assets/image-mlx-lab-icon.svg">
-<link rel="stylesheet" href="app.css?v=12">
+<link rel="stylesheet" href="app.css?v=13">
 </head>
 <body><div class="app">
 <header class="topbar compactTopbar">
@@ -66,7 +66,6 @@
   <section id="editorTools" class="editorTools card hidden">
     <div class="editorFileHead">
       <label class="filebtn primary">＋ 载入图片<input id="editorUpload" type="file" accept="image/*" multiple></label>
-      <button id="saveEditor" class="primary">保存为新图片</button>
     </div>
     <div id="editorStatus" class="hidden"></div>
 
@@ -136,7 +135,7 @@
 <main class="editorCenter card">
   <div class="editorTopbar">
     <div class="zoomStrip"><button id="zoomOut">−</button><select id="viewZoom"><option value="fit">适合窗口</option><option value="0.25">25%</option><option value="0.5">50%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select><button id="zoomIn">＋</button></div>
-    <div class="historyStrip"><button id="undoImage">↶ 撤销</button><button id="redoImage">↷ 重做</button><button id="resetDraft">恢复原图</button><button id="downloadDraft">下载当前草稿</button></div>
+    <div class="historyStrip"><button id="undoImage">↶ 撤销</button><button id="redoImage">↷ 重做</button><button id="resetDraft">恢复原图</button><button id="saveEditor" class="primary">保存为新图</button><button id="overwriteEditor">覆盖当前图</button><button id="downloadDraft">下载当前草稿</button></div>
     <div id="editorMeta" class="editorMeta">—</div>
   </div>
   <div class="cardTitle editorTitleRow"><h2 id="editorTitle">当前主图</h2><span>右侧点击图片即可切换；顶部模式只改变左栏</span></div>
@@ -156,6 +155,19 @@
 <div id="history" class="hidden"></div><button id="refreshHistory" class="hidden">刷新</button>
 </div>
 
+<dialog id="draftSwitchDialog" class="draftSwitchDialog">
+  <form method="dialog">
+    <h3>当前图片有未保存修改</h3>
+    <p id="draftSwitchMessage">切换图片前，请选择如何处理当前草稿。</p>
+    <div class="draftSwitchActions">
+      <button value="save-new" class="primary">保存为新图并切换</button>
+      <button id="draftOverwriteChoice" value="overwrite">覆盖当前图并切换</button>
+      <button value="discard" class="danger">丢弃修改并切换</button>
+      <button value="cancel">取消</button>
+    </div>
+  </form>
+</dialog>
+
 <details id="globalNoticeDrawer" class="globalNoticeDrawer">
   <summary><span class="drawerHandle"></span><span>状态 / 提示</span><span id="noticeSummary">就绪</span></summary>
   <div class="globalNoticeContent">
@@ -164,5 +176,5 @@
   </div>
 </details>
 
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body></html>
