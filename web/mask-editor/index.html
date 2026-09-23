@@ -114,7 +114,7 @@
     </div></details>
 
     <details><summary>AI 局部编辑</summary><div class="toolBody">
-      <div class="hint">使用中间当前图片 + 当前 Mask。完成后自动硬合成并另存为新图片，原图保留。</div>
+      <div class="hint">使用中间当前图片 + 当前 Mask。默认只裁剪 Mask 周边局部送给 Qwen；完成后贴回原图、硬合成并另存为新图片。</div>
       <label>编辑指令<textarea id="localAiPrompt" placeholder="例如：只把选区内衣服变成被水打湿的效果。"></textarea></label>
       <div class="two"><label>Steps<input id="localAiSteps" type="number" min="1" max="60" value="20"></label><label>Seed<input id="localAiSeed" type="number" value="42"></label></div>
       <button id="runLocalAi" class="primary wideBtn">AI 编辑选区</button>
@@ -154,5 +154,5 @@
   </div>
 </details>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body></html>

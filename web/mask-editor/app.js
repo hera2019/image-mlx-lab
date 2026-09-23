@@ -265,11 +265,14 @@ function resetSelection(){
 function selectionCoverage(){
   if(!selectionCanvas.width)return 0;const d=selCtx.getImageData(0,0,selectionCanvas.width,selectionCanvas.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i]>8)n++;return n/(selectionCanvas.width*selectionCanvas.height);
 }
-function selectionBBox(){
-  if(!selectionCanvas.width)return null;const d=selCtx.getImageData(0,0,selectionCanvas.width,selectionCanvas.height).data,w=selectionCanvas.width,h=selectionCanvas.height;let minX=w,minY=h,maxX=-1,maxY=-1;
+function maskBBox(maskCanvas=selectionCanvas){
+  if(!maskCanvas.width)return null;
+  const ctx=maskCanvas.getContext("2d",{willReadFrequently:true}),d=ctx.getImageData(0,0,maskCanvas.width,maskCanvas.height).data,w=maskCanvas.width,h=maskCanvas.height;
+  let minX=w,minY=h,maxX=-1,maxY=-1;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>8){if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y}}
   return maxX<0?null:{x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
 }
+function selectionBBox(){return maskBBox(selectionCanvas)}
 function updateMaskInfo(){$("maskCoverage").textContent="选区 "+(selectionCoverage()*100).toFixed(1)+"%"}
 function resetWorkHistory(){workHistory=[snapshotWork()];workHistoryIndex=0;updateUndo()}
 function snapshotWork(){return{image:workCanvas.toDataURL("image/png"),mask:selectionCanvas.toDataURL("image/png")}}
@@ -458,11 +461,62 @@ function canvasCoverage(maskCanvas){
   for(let i=3;i<d.length;i+=4)if(d[i]>8)n++;return n/(maskCanvas.width*maskCanvas.height);
 }
 function safeLocalSizeFor(canvas){let w=canvas.width,h=canvas.height,s=1,t=(w/32)*(h/32)*2;if(t>1450)s=Math.sqrt(1450/t);if(Math.max(w*s,h*s)>1152)s*=1152/Math.max(w*s,h*s);return[round32(w*s),round32(h*s)]}
-function hardMergeAi(aiImg,sourceSnap,maskSnap,featherPx){
+function roundLocal32(v){return Math.max(256,Math.min(1152,Math.round(v/32)*32))}
+function safeLocalCropSize(w,h){
+  const maxSide=Math.max(w,h),minSide=Math.max(1,Math.min(w,h));
+  const tokenScale=Math.sqrt(1450/Math.max(1,(w/32)*(h/32)*2));
+  const sideScale=1152/maxSide;
+  const maxScale=Math.min(tokenScale,sideScale);
+  const desiredScale=Math.max(1,640/maxSide,320/minSide);
+  let scale=Math.min(desiredScale,maxScale);
+  if(maxScale<1)scale=maxScale;
+  let tw=roundLocal32(w*scale),th=roundLocal32(h*scale);
+  while(((tw/32)*(th/32)*2>1450||Math.max(tw,th)>1152)&&(tw>256||th>256)){
+    if(tw>=th&&tw>256)tw-=32;else if(th>256)th-=32;else break;
+  }
+  return[tw,th];
+}
+function cropCanvas(src,rect){
+  const c=document.createElement("canvas");c.width=rect.w;c.height=rect.h;
+  c.getContext("2d").drawImage(src,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);return c;
+}
+function centeredSpan(start,size,target,max){
+  target=Math.min(max,Math.max(size,Math.ceil(target)));
+  let out=Math.floor(start+size/2-target/2);
+  out=Math.max(0,Math.min(max-target,out));return{start:out,size:target};
+}
+function normalizeCropAspect(rect,W,H){
+  let {x,y,w,h}=rect,r=w/h;
+  if(r<0.65){const s=centeredSpan(x,w,h*0.65,W);x=s.start;w=s.size}
+  else if(r>1.54){const s=centeredSpan(y,h,w/1.54,H);y=s.start;h=s.size}
+  return{x,y,w,h};
+}
+function alignCropRect(rect,W,H,align=8){
+  const x0=Math.max(0,Math.floor(rect.x/align)*align),y0=Math.max(0,Math.floor(rect.y/align)*align);
+  const x1=Math.min(W,Math.ceil((rect.x+rect.w)/align)*align),y1=Math.min(H,Math.ceil((rect.y+rect.h)/align)*align);
+  return{x:x0,y:y0,w:Math.max(1,x1-x0),h:Math.max(1,y1-y0)};
+}
+function planLocalAiRegion(sourceCanvas,maskCanvas,featherPx){
+  const W=sourceCanvas.width,H=sourceCanvas.height,bbox=maskBBox(maskCanvas);if(!bbox)return null;
+  const pad=Math.max(48,Math.ceil(Math.max(bbox.w,bbox.h)*0.25),Math.ceil(featherPx*2+16));
+  let x0=Math.max(0,bbox.x-pad),y0=Math.max(0,bbox.y-pad),x1=Math.min(W,bbox.x+bbox.w+pad),y1=Math.min(H,bbox.y+bbox.h+pad);
+  let crop=normalizeCropAspect({x:x0,y:y0,w:x1-x0,h:y1-y0},W,H);
+  crop=alignCropRect(crop,W,H,8);
+  const cropPercent=crop.w*crop.h/(W*H);
+  const useFull=cropPercent>=0.72;
+  if(useFull)crop={x:0,y:0,w:W,h:H};
+  const target=useFull?safeLocalSizeFor(sourceCanvas):safeLocalCropSize(crop.w,crop.h);
+  return{strategy:useFull?"full":"crop",bbox,crop,cropPercent:useFull?1:cropPercent,padding:pad,target};
+}
+function composeCropCandidate(sourceSnap,aiImg,crop){
+  const c=cloneCanvas(sourceSnap),x=c.getContext("2d");
+  x.drawImage(aiImg,crop.x,crop.y,crop.w,crop.h);return c;
+}
+function hardMergeAi(aiCandidate,sourceSnap,maskSnap,featherPx){
   const W=sourceSnap.width,H=sourceSnap.height,out=document.createElement("canvas"),ai=document.createElement("canvas");
   out.width=ai.width=W;out.height=ai.height=H;
   const ox=out.getContext("2d",{willReadFrequently:true}),ax=ai.getContext("2d",{willReadFrequently:true});
-  ox.drawImage(sourceSnap,0,0);ax.drawImage(aiImg,0,0,W,H);
+  ox.drawImage(sourceSnap,0,0);ax.drawImage(aiCandidate,0,0,W,H);
   const src=ox.getImageData(0,0,W,H),ed=ax.getImageData(0,0,W,H);
   const raw=maskSnap.getContext("2d",{willReadFrequently:true}).getImageData(0,0,W,H);
   const eff=constrainedMaskCanvas(maskSnap,featherPx).getContext("2d",{willReadFrequently:true}).getImageData(0,0,W,H);
@@ -476,26 +530,43 @@ function hardMergeAi(aiImg,sourceSnap,maskSnap,featherPx){
   }
   ox.putImageData(dst,0,0);return{canvas:out,outsideChanged,insideChanged};
 }
+function localPlanText(plan,sourceSnap){
+  const b=plan.bbox,c=plan.crop,[tw,th]=plan.target;
+  const strategy=plan.strategy==="crop"?"局部裁剪":"整图回退";
+  return strategy+" · 原图 "+sourceSnap.width+"×"+sourceSnap.height+
+    " · Mask bbox "+b.w+"×"+b.h+" @ "+b.x+","+b.y+
+    " · 输入区域 "+c.w+"×"+c.h+" @ "+c.x+","+c.y+
+    " · Qwen "+tw+"×"+th;
+}
 $("runLocalAi").onclick=async()=>{
   if(!workCanvas.width){notify("请先选择图片。","editor");return}
   const coverage=selectionCoverage();if(coverage<=0){notify("请先选择要 AI 编辑的区域。","editor");return}
   const user=$("localAiPrompt").value.trim();if(!user){notify("请输入 AI 局部编辑指令。","editor");return}
   const sourceSnap=cloneCanvas(workCanvas),maskSnap=cloneCanvas(selectionCanvas),featherPx=+$("feather").value||0;
-  const sourceKey=editorSource?.url||editorSource?.name||"draft",historyAtStart=workHistoryIndex,[w,h]=safeLocalSizeFor(sourceSnap);
-  const prompt="<image1>是需要编辑的原图。<image2>是黑白位置遮罩：白色区域是唯一允许修改的区域，黑色区域禁止修改。"+user+"。严格保持黑色区域对应的构图、颜色、纹理和透明度不变。";
+  const plan=planLocalAiRegion(sourceSnap,maskSnap,featherPx);if(!plan){notify("无法计算 Mask 区域。","editor");return}
+  const sourceKey=editorSource?.url||editorSource?.name||"draft",historyAtStart=workHistoryIndex,[w,h]=plan.target;
+  const qwenSource=cropCanvas(sourceSnap,plan.crop),qwenMask=cropCanvas(maskSnap,plan.crop);
+  const prompt="<image1>是原图中包含目标的工作区域。<image2>是同一区域的黑白位置遮罩：白色区域是唯一允许修改的区域，黑色区域禁止修改。"+
+    user+"。严格保持黑色区域对应的构图、颜色、纹理和透明度不变；不要改变工作区域之外不存在的内容。";
   const btn=$("runLocalAi"),oldText=btn.textContent;btn.disabled=true;btn.textContent="AI 编辑中…";
-  notify("AI 局部编辑中…\nMask "+(coverage*100).toFixed(1)+"% · Qwen "+w+"×"+h+" · 原图与 Mask 已冻结。","editor");
+  notify("AI 局部编辑中…\nMask "+(coverage*100).toFixed(1)+"% · 原图与 Mask 已冻结。\n"+localPlanText(plan,sourceSnap)+
+    (plan.strategy==="crop"?"\n仅把局部区域送给 Qwen，完成后贴回原图。":"\n选区分布太广，自动回退到整图送模。"),"editor");
   try{
     const r=await fetch("/api/mask-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
       prompt,size:w+"x"+h,steps:+$("localAiSteps").value||20,seed:+$("localAiSeed").value||42,
-      image_b64:dataUrlToB64(sourceSnap.toDataURL("image/png")),mask_b64:dataUrlToB64(selectionToBW(maskSnap).toDataURL("image/png")),
-      source_size:sourceSnap.width+"x"+sourceSnap.height,mask_percent:+(coverage*100).toFixed(2)
+      image_b64:dataUrlToB64(qwenSource.toDataURL("image/png")),mask_b64:dataUrlToB64(selectionToBW(qwenMask).toDataURL("image/png")),
+      source_size:qwenSource.width+"x"+qwenSource.height,full_source_size:sourceSnap.width+"x"+sourceSnap.height,
+      mask_percent:+(coverage*100).toFixed(2),local_strategy:plan.strategy,
+      mask_bbox:[plan.bbox.x,plan.bbox.y,plan.bbox.w,plan.bbox.h],
+      crop_rect:[plan.crop.x,plan.crop.y,plan.crop.w,plan.crop.h],
+      crop_percent:+(plan.cropPercent*100).toFixed(2)
     })}),j=await r.json();
     if(!r.ok)throw new Error(j.error||"AI 编辑失败");
     if((editorSource?.url||editorSource?.name||"draft")!==sourceKey||workHistoryIndex!==historyAtStart){
       notify("AI 已生成完成，但生成期间当前草稿发生了变化，所以结果没有自动应用。请重新点击 AI 编辑选区。","editor");return;
     }
-    const im=await imgFromUrl("data:image/png;base64,"+j.b64_json),merged=hardMergeAi(im,sourceSnap,maskSnap,featherPx);
+    const im=await imgFromUrl("data:image/png;base64,"+j.b64_json);
+    const candidate=composeCropCandidate(sourceSnap,im,plan.crop),merged=hardMergeAi(candidate,sourceSnap,maskSnap,featherPx);
     if(merged.outsideChanged!==0)throw new Error("安全检查失败：Mask 外检测到 "+merged.outsideChanged+" 个像素变化，结果已拒绝应用");
     commitWork(merged.canvas,maskSnap,"AI 局部编辑");
     const base=(editorSource?.name||"image").replace(/\.[^.]+$/,"");
@@ -510,8 +581,6 @@ $("runLocalAi").onclick=async()=>{
     const savedImg=await imgFromUrl(saved.url);
     editorSource={...savedAsset,w:savedImg.naturalWidth,h:savedImg.naturalHeight,img:savedImg};
 
-    // The AI result is now a NEW current image object.
-    // Old image remains in the gallery; old selection must not leak into the new image.
     selectionCanvas.width=workCanvas.width;selectionCanvas.height=workCanvas.height;
     selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);
     floating=null;shapeStart=null;shapeBase=null;drawing=false;
@@ -522,8 +591,9 @@ $("runLocalAi").onclick=async()=>{
     const perf=formatPerf(j.perf);$("localAiPerf").textContent=perf;
     notify("AI 局部编辑完成并已自动保存到右侧图片库。\n已切换到新图片："+saved.name+
       "\n旧图仍保留；旧 Mask 已清空；编辑历史已从新图片重新开始。"+
+      "\n"+localPlanText(plan,sourceSnap)+
       "\n本次 Mask "+(coverage*100).toFixed(1)+"% · Mask 外像素安全检查：0 个变化 · Mask 内变化 "+merged.insideChanged+" 个像素"+
-      (featherPx? " · 羽化仅向 Mask 内部过渡":"")+"\n"+perf,"editor");
+      (featherPx?" · 羽化仅向 Mask 内部过渡":"")+"\n"+perf,"editor");
   }catch(e){notify("AI 编辑失败："+e.message,"editor")}
   finally{btn.disabled=false;btn.textContent=oldText}
 };

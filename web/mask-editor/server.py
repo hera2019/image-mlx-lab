@@ -220,7 +220,10 @@ class Handler(SimpleHTTPRequestHandler):
                 "history_hidden":mode=="mask-edit","condition_images":ref_count,
                 "visual_tokens_est":round((w/32)*(h/32)*ref_count) if ref_count else 0,
                 "prompt_chars":len(prompt),"prompt_preview":prompt[:90],
-                "source_size":req.get("source_size"),"mask_percent":req.get("mask_percent"),
+                "source_size":req.get("source_size"),"full_source_size":req.get("full_source_size"),
+                "mask_percent":req.get("mask_percent"),"local_strategy":req.get("local_strategy"),
+                "mask_bbox":req.get("mask_bbox"),"crop_rect":req.get("crop_rect"),
+                "crop_percent":req.get("crop_percent"),
                 "strength":req.get("strength"),"rss_before_mb":proc_rss_mb(),
                 "swap_before_mb":swap_used_mb(),"memory_free_before_pct":memory_free_pct(),
             })
