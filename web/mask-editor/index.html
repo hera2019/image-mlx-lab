@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Image MLX Lab</title>
 <link rel="icon" type="image/svg+xml" href="assets/image-mlx-lab-icon.svg">
-<link rel="stylesheet" href="app.css?v=15">
+<link rel="stylesheet" href="app.css?v=16">
 </head>
 <body><div class="app">
 <header class="topbar compactTopbar">
@@ -72,6 +72,7 @@
     <details open><summary>选区 / Mask</summary><div class="toolBody">
       <div class="toolGrid">
         <button id="rectTool">▭ 矩形</button><button id="ellipseTool">◯ 椭圆</button>
+        <button id="lassoAddTool">〰 套索＋</button><button id="lassoSubTool">〰 套索－</button>
         <button id="paintTool">✏️ 画笔</button><button id="eraseTool">⌫ 擦除</button>
         <button id="wandAddTool">🪄 魔棒＋</button><button id="wandSubTool">🪄 魔棒－</button>
       </div>
@@ -79,8 +80,18 @@
       <div class="two"><label>魔棒容差<input id="wandTolerance" type="number" min="0" max="255" value="28"></label><label class="check">连续区域<input id="wandContiguous" type="checkbox" checked></label></div>
       <div class="two"><button id="selectAll">全选</button><button id="invertMask">反选</button></div>
       <div class="two"><button id="clearMask">清除选区</button><label class="check"><input id="showMask" type="checkbox" checked>显示 Mask</label></div>
+      <div class="selectionMorphRow"><label>边界 <input id="selectionMorphPx" type="number" min="1" max="64" value="3"> px</label><button id="expandMask">扩展</button><button id="contractMask">收缩</button></div>
+      <div class="hint">扩展适合 AI 去遮挡时吃掉残边；收缩可避免修改碰到主体边缘。</div>
       <label>边缘羽化 <b id="featherVal">0</b> px<input id="feather" type="range" min="0" max="60" value="0"></label>
       <div id="maskCoverage" class="fileInfo">选区 0%</div>
+    </div></details>
+
+    <details><summary>修复 / 仿制</summary><div class="toolBody">
+      <div class="two"><button id="cloneTool">🧬 克隆图章</button><button id="healTool">🩹 修复画笔</button></div>
+      <label>修复笔刷 <b id="repairBrushVal">48</b> px<input id="repairBrush" type="range" min="4" max="240" value="48"></label>
+      <div id="cloneInfo" class="fileInfo">克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。</div>
+      <button id="clearCloneSource" class="wideBtn">清除克隆取样点</button>
+      <div class="hint">修复画笔适合小污点、灰尘和细划痕；复杂纹理优先用克隆图章或 AI 局部编辑。</div>
     </div></details>
 
     <details><summary>复制 / 剪切 / 粘贴</summary><div class="toolBody">
@@ -176,5 +187,5 @@
   </div>
 </details>
 
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body></html>

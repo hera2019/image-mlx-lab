@@ -225,3 +225,11 @@ hr{margin:10px 0}.big{padding:7px;margin-top:6px}.wideBtn{margin-top:4px}
 .noticeHistoryItem:hover,.noticeHistoryItem.active{
   background:rgba(224,236,247,.32)!important;
 }
+
+/* v19 selection morphology + repair tools */
+.selectionMorphRow{display:grid;grid-template-columns:minmax(88px,1fr) auto auto;gap:5px;align-items:end;margin-top:5px}
+.selectionMorphRow label{margin:0}
+.selectionMorphRow input{width:64px;display:inline-block}
+#cloneInfo{line-height:1.35}
+
+#cloneTool.active,#healTool.active{background:#17202b;color:#fff;border-color:#17202b}

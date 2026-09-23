@@ -100,3 +100,13 @@ After changing web UI code:
 `AGENTS.md` and `CLAUDE.md` are entry-point files only. They must stay short and point here instead of duplicating the rules.
 
 If architecture, safety boundaries, result directories, runtime assumptions, or major UX invariants change, update this document in the same change.
+
+
+## Traditional selection and repair tools
+
+- Selection tools include rectangle, ellipse, freehand lasso add/subtract, brush add/erase, magic-wand add/subtract, invert, clear, and explicit Expand / Contract by pixel radius.
+- Expand / Contract is especially useful around AI removal masks: Expand can consume a few residual edge pixels; Contract can protect subject boundaries.
+- Deterministic repair tools include Clone Stamp and Spot Healing.
+- Clone Stamp samples with Option/Alt-click and paints from a frozen stroke-start source so the sample does not recursively contaminate itself during one stroke.
+- Spot Healing is intended for small dust, spots, and scratches. It fills only the painted repair mask from surrounding pixels; complex texture or large missing regions should use Clone Stamp or AI local edit instead.
+- Clone/Healing pixel edits must participate in normal Undo/Redo and unsaved-draft protection.

@@ -7,6 +7,7 @@ const sizePreset=$("sizePreset"),widthInput=$("widthInput"),heightInput=$("heigh
 
 let mode="generate",variationAsset=null,editAsset=null,editRefQueue=[],lastGen=null,assets=[];
 let editorSource=null,currentViewScale=1,selectionTool="rect",drawing=false,lastPoint=null,shapeStart=null,shapeBase=null;
+let lassoPoints=[],cloneSource=null,repairBase=null,repairOffset=null,repairStrokeMask=null,repairChanged=false,repairLastPoint=null;
 let workHistory=[],workHistoryIndex=-1,savedHistoryIndex=-1,clipboard=null,floating=null,dragStart=null,adjustTimer=null;
 
 const workCanvas=document.createElement("canvas"),workCtx=workCanvas.getContext("2d",{willReadFrequently:true});
@@ -293,7 +294,8 @@ async function openEditorAsset(item){
     const a=await remoteAsset(item.url,item.name);
     editorSource={...item,...a,url:item.url,kind:item.kind||"generated"};
     workCanvas.width=a.w;workCanvas.height=a.h;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(a.img,0,0);
-    resetSelection();floating=null;clipboardControls();resetAdjust(false);resetWorkHistory();syncEditorSizeInputs();
+    resetSelection();floating=null;cloneSource=null;repairBase=null;repairOffset=null;repairStrokeMask=null;lassoPoints=[];clipboardControls();resetAdjust(false);resetWorkHistory();syncEditorSizeInputs();
+    if($("cloneInfo"))$("cloneInfo").textContent="克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。";
     syncCurrentMainToMode();
     $("editorTitle").textContent=item.name;
     notify("当前主图："+item.name+"\n顶部模式未改变；右侧可继续切换其他图片比较。",mode==="editor"?"editor":"gen",false);
@@ -314,6 +316,59 @@ function maskBBox(maskCanvas=selectionCanvas){
   return maxX<0?null:{x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
 }
 function selectionBBox(){return maskBBox(selectionCanvas)}
+function edt1d(f,n,d,v,z){
+  let k=0;v[0]=0;z[0]=-1e20;z[1]=1e20;
+  for(let q=1;q<n;q++){
+    let s;
+    while(true){
+      const vk=v[k];
+      s=((f[q]+q*q)-(f[vk]+vk*vk))/(2*q-2*vk);
+      if(s>z[k])break;
+      k--;
+    }
+    k++;v[k]=q;z[k]=s;z[k+1]=1e20;
+  }
+  k=0;
+  for(let q=0;q<n;q++){
+    while(z[k+1]<q)k++;
+    const dx=q-v[k];d[q]=dx*dx+f[v[k]];
+  }
+}
+function binaryDistanceField(binary,w,h,featureValue){
+  const INF=1e12,n=w*h,tmp=new Float32Array(n),dist=new Float32Array(n),maxN=Math.max(w,h);
+  const f=new Float64Array(maxN),d=new Float64Array(maxN),v=new Int32Array(maxN),z=new Float64Array(maxN+1);
+  for(let y=0;y<h;y++){
+    const off=y*w;
+    for(let x=0;x<w;x++)f[x]=binary[off+x]===featureValue?0:INF;
+    edt1d(f,w,d,v,z);
+    for(let x=0;x<w;x++)tmp[off+x]=d[x];
+  }
+  for(let x=0;x<w;x++){
+    for(let y=0;y<h;y++)f[y]=tmp[y*w+x];
+    edt1d(f,h,d,v,z);
+    for(let y=0;y<h;y++)dist[y*w+x]=d[y];
+  }
+  return dist;
+}
+function morphSelection(expand){
+  if(!selectionCanvas.width||selectionCoverage()<=0){notify("请先建立选区。","editor");return}
+  const r=Math.max(1,Math.min(64,Math.round(+$("selectionMorphPx").value||1))),w=selectionCanvas.width,h=selectionCanvas.height,n=w*h;
+  const im=selCtx.getImageData(0,0,w,h),binary=new Uint8Array(n);
+  for(let i=0;i<n;i++)binary[i]=im.data[i*4+3]>8?1:0;
+  const dist=binaryDistanceField(binary,w,h,expand?1:0),r2=r*r,out=selCtx.createImageData(w,h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const n0=y*w+x,i=n0*4;
+    let on;
+    if(expand)on=dist[n0]<=r2;
+    else{
+      const edgeDist=Math.min((x+1)*(x+1),(y+1)*(y+1),(w-x)*(w-x),(h-y)*(h-y));
+      on=!!binary[n0]&&Math.min(dist[n0],edgeDist)>r2;
+    }
+    if(on){out.data[i]=out.data[i+1]=out.data[i+2]=255;out.data[i+3]=255}
+  }
+  selCtx.putImageData(out,0,0);renderOverlay();updateMaskInfo();
+  notify("选区已"+(expand?"扩展 ":"收缩 ")+r+" px。","editor");
+}
 function updateMaskInfo(){$("maskCoverage").textContent="选区 "+(selectionCoverage()*100).toFixed(1)+"%"}
 function resetWorkHistory(){workHistory=[snapshotWork()];workHistoryIndex=0;savedHistoryIndex=0;updateUndo()}
 function snapshotWork(){return{image:cloneCanvas(workCanvas),mask:cloneCanvas(selectionCanvas)}}
@@ -419,6 +474,111 @@ function commitWork(newCanvas,newMask=selectionCanvas,label="编辑",announce=tr
   syncEditorSizeInputs();pushWorkHistory();renderEditor();if(announce)notify(label+"完成 · 尚未保存。","editor");
 }
 
+/* 修复 / 仿制 */
+function repairBrushSize(){return Math.max(4,+$("repairBrush").value||48)}
+function refreshWorkPixels(){
+  displayCtx.clearRect(0,0,sourceCanvas.width,sourceCanvas.height);
+  displayCtx.drawImage(workCanvas,0,0);
+  renderOverlay();
+}
+function makeSoftClonePatch(base,sx,sy,r){
+  const d=Math.max(4,Math.ceil(r*2+4)),c=document.createElement("canvas");c.width=c.height=d;
+  const x=c.getContext("2d"),cx=d/2,cy=d/2;
+  x.drawImage(base,cx-sx,cy-sy);
+  x.globalCompositeOperation="destination-in";
+  const g=x.createRadialGradient(cx,cy,r*.62,cx,cy,r);
+  g.addColorStop(0,"rgba(0,0,0,1)");g.addColorStop(.82,"rgba(0,0,0,.92)");g.addColorStop(1,"rgba(0,0,0,0)");
+  x.fillStyle=g;x.fillRect(0,0,d,d);x.globalCompositeOperation="source-over";
+  return c;
+}
+function stampAlong(a,b,fn,spacing){
+  const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy),steps=Math.max(1,Math.ceil(dist/Math.max(1,spacing)));
+  for(let i=0;i<=steps;i++){const t=i/steps;fn({x:a.x+dx*t,y:a.y+dy*t})}
+}
+function cloneStampAt(p){
+  if(!repairBase||!repairOffset)return;
+  const r=repairBrushSize()/2,sx=p.x+repairOffset.x,sy=p.y+repairOffset.y;
+  if(sx<-r||sy<-r||sx>workCanvas.width+r||sy>workCanvas.height+r)return;
+  const patch=makeSoftClonePatch(repairBase,sx,sy,r);
+  workCtx.drawImage(patch,p.x-patch.width/2,p.y-patch.height/2);
+  repairChanged=true;
+}
+function cloneStampSegment(a,b){
+  const spacing=Math.max(1,repairBrushSize()*.18);
+  stampAlong(a,b,cloneStampAt,spacing);refreshWorkPixels();
+}
+function newRepairMask(){
+  const c=document.createElement("canvas");c.width=workCanvas.width;c.height=workCanvas.height;return c;
+}
+function drawRepairMaskStroke(a,b){
+  if(!repairStrokeMask)repairStrokeMask=newRepairMask();
+  const x=repairStrokeMask.getContext("2d");
+  x.save();x.strokeStyle="#fff";x.fillStyle="#fff";x.lineWidth=repairBrushSize();x.lineCap="round";x.lineJoin="round";
+  x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);x.stroke();x.beginPath();x.arc(b.x,b.y,repairBrushSize()/2,0,Math.PI*2);x.fill();x.restore();
+  renderOverlay();
+}
+function healMaskedArea(maskCanvas){
+  const bbox=maskBBox(maskCanvas);if(!bbox)return false;
+  const pad=Math.max(8,Math.ceil(repairBrushSize()*1.4));
+  const x0=Math.max(0,bbox.x-pad),y0=Math.max(0,bbox.y-pad),x1=Math.min(workCanvas.width,bbox.x+bbox.w+pad),y1=Math.min(workCanvas.height,bbox.y+bbox.h+pad);
+  const w=x1-x0,h=y1-y0,n=w*h;
+  if(n>1800000){notify("修复区域太大。修复画笔适合小污点/划痕；大区域请用克隆图章或 AI 局部编辑。","editor","important");return false}
+  const src=workCtx.getImageData(x0,y0,w,h),mask=maskCanvas.getContext("2d",{willReadFrequently:true}).getImageData(x0,y0,w,h);
+  const hole=new Uint8Array(n);let holeCount=0;
+  for(let i=0;i<n;i++){if(mask.data[i*4+3]>8){hole[i]=1;holeCount++}}
+  if(!holeCount)return false;
+
+  let br=0,bg=0,bb=0,ba=0,bc=0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const i=y*w+x;if(hole[i])continue;
+    let touches=false;
+    for(let yy=Math.max(0,y-1);yy<=Math.min(h-1,y+1)&&!touches;yy++)for(let xx=Math.max(0,x-1);xx<=Math.min(w-1,x+1);xx++){
+      if(hole[yy*w+xx]){touches=true;break}
+    }
+    if(touches){const k=i*4;br+=src.data[k];bg+=src.data[k+1];bb+=src.data[k+2];ba+=src.data[k+3];bc++}
+  }
+  if(!bc){
+    for(let i=0;i<n;i++)if(!hole[i]){const k=i*4;br+=src.data[k];bg+=src.data[k+1];bb+=src.data[k+2];ba+=src.data[k+3];bc++}
+  }
+  if(!bc)return false;
+  const avg=[br/bc,bg/bc,bb/bc,ba/bc],curr=new Float32Array(n*4),next=new Float32Array(n*4);
+  for(let i=0;i<n;i++){const k=i*4;for(let c=0;c<4;c++)curr[k+c]=hole[i]?avg[c]:src.data[k+c]}
+  const iterations=Math.min(140,Math.max(36,Math.round(Math.max(bbox.w,bbox.h)*.7)));
+  for(let it=0;it<iterations;it++){
+    next.set(curr);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;if(!hole[i])continue;const k=i*4;
+      let cnt=0,s0=0,s1=0,s2=0,s3=0;
+      if(x>0){const q=(i-1)*4;s0+=curr[q];s1+=curr[q+1];s2+=curr[q+2];s3+=curr[q+3];cnt++}
+      if(x<w-1){const q=(i+1)*4;s0+=curr[q];s1+=curr[q+1];s2+=curr[q+2];s3+=curr[q+3];cnt++}
+      if(y>0){const q=(i-w)*4;s0+=curr[q];s1+=curr[q+1];s2+=curr[q+2];s3+=curr[q+3];cnt++}
+      if(y<h-1){const q=(i+w)*4;s0+=curr[q];s1+=curr[q+1];s2+=curr[q+2];s3+=curr[q+3];cnt++}
+      next[k]=s0/cnt;next[k+1]=s1/cnt;next[k+2]=s2/cnt;next[k+3]=s3/cnt;
+    }
+    curr.set(next);
+  }
+  const out=new ImageData(new Uint8ClampedArray(src.data),w,h);
+  for(let i=0;i<n;i++)if(hole[i]){
+    const k=i*4,a=mask.data[k+3]/255;
+    for(let c=0;c<4;c++)out.data[k+c]=Math.round(src.data[k+c]*(1-a)+curr[k+c]*a);
+  }
+  workCtx.putImageData(out,x0,y0);return true;
+}
+function finishRepairStroke(){
+  if(selectionTool==="clone"){
+    if(repairChanged){pushWorkHistory();notify("克隆图章完成 · 尚未保存。","editor")}
+  }else if(selectionTool==="heal"&&repairStrokeMask){
+    notify("修复画笔处理中…","editor","progress");
+    if(healMaskedArea(repairStrokeMask)){pushWorkHistory();notify("修复画笔完成 · 尚未保存。","editor","important")}
+  }
+  repairBase=null;repairOffset=null;repairStrokeMask=null;repairChanged=false;repairLastPoint=null;renderEditor();
+}
+function clearCloneSource(){
+  cloneSource=null;$("cloneInfo").textContent="克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。";renderOverlay();
+}
+$("repairBrush").oninput=e=>$("repairBrushVal").textContent=e.target.value;
+$("clearCloneSource").onclick=clearCloneSource;
+
 /* 浏览 */
 const zoomSelect=$("viewZoom");zoomSelect.add(new Option("自定义","custom"));
 function viewportGeometry(scale=currentViewScale){
@@ -480,12 +640,29 @@ function renderOverlay(){
     }
     overlayCtx.putImageData(o,0,0);
   }
+  if(repairStrokeMask){
+    overlayCtx.save();overlayCtx.globalAlpha=.22;overlayCtx.drawImage(repairStrokeMask,0,0);overlayCtx.restore();
+  }
+  if(lassoPoints.length>1){
+    overlayCtx.save();overlayCtx.strokeStyle=selectionTool==="lassoSub"?"#ff7a59":"#25a7ff";overlayCtx.lineWidth=Math.max(1.2,workCanvas.width/900);overlayCtx.setLineDash([6,4]);overlayCtx.lineDashOffset=-antsPhase;
+    overlayCtx.beginPath();overlayCtx.moveTo(lassoPoints[0].x,lassoPoints[0].y);for(let i=1;i<lassoPoints.length;i++)overlayCtx.lineTo(lassoPoints[i].x,lassoPoints[i].y);overlayCtx.stroke();overlayCtx.restore();
+  }
+  if(cloneSource&&selectionTool==="clone"){
+    const r=Math.max(8,repairBrushSize()/2);overlayCtx.save();overlayCtx.strokeStyle="#ff9f1c";overlayCtx.lineWidth=Math.max(1.2,workCanvas.width/900);
+    overlayCtx.beginPath();overlayCtx.arc(cloneSource.x,cloneSource.y,r,0,Math.PI*2);overlayCtx.stroke();
+    overlayCtx.beginPath();overlayCtx.moveTo(cloneSource.x-r*.35,cloneSource.y);overlayCtx.lineTo(cloneSource.x+r*.35,cloneSource.y);overlayCtx.moveTo(cloneSource.x,cloneSource.y-r*.35);overlayCtx.lineTo(cloneSource.x,cloneSource.y+r*.35);overlayCtx.stroke();overlayCtx.restore();
+  }
   if(floating){overlayCtx.save();overlayCtx.globalAlpha=floating.opacity??1;overlayCtx.drawImage(floating.canvas,floating.x,floating.y,floating.w,floating.h);overlayCtx.strokeStyle="#2477d4";overlayCtx.lineWidth=Math.max(2,workCanvas.width/500);overlayCtx.setLineDash([7,5]);overlayCtx.lineDashOffset=-antsPhase;overlayCtx.strokeRect(floating.x,floating.y,floating.w,floating.h);overlayCtx.restore()}
 }
 setInterval(()=>{if(mode==="editor"&&selectionCanvas.width&&$("showMask").checked){antsPhase=(antsPhase+1)%16;renderOverlay()}},180);
 $("showMask").onchange=renderOverlay;$("brush").oninput=e=>$("brushVal").textContent=e.target.value;$("feather").oninput=e=>$("featherVal").textContent=e.target.value;
-function selectTool(t){selectionTool=t;["rect","ellipse","paint","erase","wandAdd","wandSub"].forEach(k=>$(k+"Tool").classList.toggle("active",k===t))}
-["rect","ellipse","paint","erase","wandAdd","wandSub"].forEach(k=>$(k+"Tool").onclick=()=>selectTool(k));
+function selectTool(t){
+  selectionTool=t;
+  ["rect","ellipse","lassoAdd","lassoSub","paint","erase","wandAdd","wandSub","clone","heal"].forEach(k=>$(k+"Tool").classList.toggle("active",k===t));
+  lassoPoints=[];repairStrokeMask=null;renderOverlay();
+}
+["rect","ellipse","lassoAdd","lassoSub","paint","erase","wandAdd","wandSub","clone","heal"].forEach(k=>$(k+"Tool").onclick=()=>selectTool(k));
+$("expandMask").onclick=()=>morphSelection(true);$("contractMask").onclick=()=>morphSelection(false);
 function canvasPoint(ev){const r=overlayCanvas.getBoundingClientRect();return{x:(ev.clientX-r.left)*overlayCanvas.width/r.width,y:(ev.clientY-r.top)*overlayCanvas.height/r.height}}
 function drawSelectionStroke(a,b){
   selCtx.save();selCtx.lineWidth=+$("brush").value;selCtx.lineCap="round";selCtx.lineJoin="round";selCtx.strokeStyle="#fff";
@@ -504,19 +681,62 @@ function magicWand(p,add){
   else for(let n=0;n<w*h;n++){const i=n*4;if(ok(i)){md[i]=md[i+1]=md[i+2]=255;md[i+3]=target}}
   selCtx.putImageData(mask,0,0);renderOverlay();updateMaskInfo();
 }
+function finishLasso(){
+  if(lassoPoints.length>=3){
+    selCtx.save();
+    if(selectionTool==="lassoSub")selCtx.globalCompositeOperation="destination-out";
+    selCtx.fillStyle="#fff";selCtx.beginPath();selCtx.moveTo(lassoPoints[0].x,lassoPoints[0].y);
+    for(let i=1;i<lassoPoints.length;i++)selCtx.lineTo(lassoPoints[i].x,lassoPoints[i].y);
+    selCtx.closePath();selCtx.fill();selCtx.restore();
+  }
+  lassoPoints=[];renderOverlay();updateMaskInfo();
+}
 overlayCanvas.onpointerdown=e=>{
-  if(!workCanvas.width)return;const p=canvasPoint(e);drawing=true;overlayCanvas.setPointerCapture(e.pointerId);
-  if(floating){dragStart={p,x:floating.x,y:floating.y};return}
-  if(selectionTool==="wandAdd"||selectionTool==="wandSub"){drawing=false;magicWand(p,selectionTool==="wandAdd");return}
-  lastPoint=p;if(selectionTool==="paint"||selectionTool==="erase")drawSelectionStroke(p,p);
+  if(!workCanvas.width)return;const p=canvasPoint(e);
+  if(floating){drawing=true;overlayCanvas.setPointerCapture(e.pointerId);dragStart={p,x:floating.x,y:floating.y};return}
+  if(selectionTool==="wandAdd"||selectionTool==="wandSub"){magicWand(p,selectionTool==="wandAdd");return}
+  if(selectionTool==="lassoAdd"||selectionTool==="lassoSub"){
+    drawing=true;overlayCanvas.setPointerCapture(e.pointerId);lassoPoints=[p];renderOverlay();return;
+  }
+  if(selectionTool==="clone"){
+    if(adjustmentChanged()){notify("请先应用或重置当前亮度/色彩预览，再使用克隆图章。","editor","important");return}
+    if(e.altKey){
+      cloneSource={x:p.x,y:p.y};$("cloneInfo").textContent="取样点："+Math.round(p.x)+", "+Math.round(p.y)+"。现在直接涂抹目标区域。";renderOverlay();return;
+    }
+    if(!cloneSource){notify("克隆图章：请先按住 ⌥ Option / Alt 点击图片设置取样点。","editor","important");return}
+    drawing=true;overlayCanvas.setPointerCapture(e.pointerId);repairBase=cloneCanvas(workCanvas);repairOffset={x:cloneSource.x-p.x,y:cloneSource.y-p.y};repairChanged=false;repairLastPoint=p;cloneStampSegment(p,p);return;
+  }
+  if(selectionTool==="heal"){
+    if(adjustmentChanged()){notify("请先应用或重置当前亮度/色彩预览，再使用修复画笔。","editor","important");return}
+    drawing=true;overlayCanvas.setPointerCapture(e.pointerId);repairStrokeMask=newRepairMask();repairLastPoint=p;drawRepairMaskStroke(p,p);return;
+  }
+  drawing=true;overlayCanvas.setPointerCapture(e.pointerId);lastPoint=p;
+  if(selectionTool==="paint"||selectionTool==="erase")drawSelectionStroke(p,p);
   else{shapeStart=p;shapeBase=selCtx.getImageData(0,0,selectionCanvas.width,selectionCanvas.height);selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);drawSelectionShape(shapeStart,p)}
 };
 overlayCanvas.onpointermove=e=>{
   if(!drawing)return;const p=canvasPoint(e);
   if(floating){floating.x=dragStart.x+(p.x-dragStart.p.x);floating.y=dragStart.y+(p.y-dragStart.p.y);renderOverlay();return}
+  if(selectionTool==="lassoAdd"||selectionTool==="lassoSub"){
+    const prev=lassoPoints[lassoPoints.length-1],minStep=Math.max(.6,2/(currentViewScale||1));
+    if(!prev||Math.hypot(p.x-prev.x,p.y-prev.y)>=minStep){lassoPoints.push(p);renderOverlay()}return;
+  }
+  if(selectionTool==="clone"){cloneStampSegment(repairLastPoint,p);repairLastPoint=p;return}
+  if(selectionTool==="heal"){drawRepairMaskStroke(repairLastPoint,p);repairLastPoint=p;return}
   if(selectionTool==="paint"||selectionTool==="erase"){drawSelectionStroke(lastPoint,p);lastPoint=p}else drawSelectionShape(shapeStart,p)
 };
-overlayCanvas.onpointerup=()=>{drawing=false;shapeStart=null;shapeBase=null};overlayCanvas.onpointercancel=()=>{drawing=false;shapeStart=null;shapeBase=null};
+overlayCanvas.onpointerup=e=>{
+  if(!drawing)return;drawing=false;
+  if(selectionTool==="lassoAdd"||selectionTool==="lassoSub"){finishLasso();return}
+  if(selectionTool==="clone"){finishRepairStroke();return}
+  if(selectionTool==="heal"){setTimeout(finishRepairStroke,20);return}
+  shapeStart=null;shapeBase=null;
+};
+overlayCanvas.onpointercancel=()=>{
+  drawing=false;if(selectionTool==="lassoAdd"||selectionTool==="lassoSub")lassoPoints=[];
+  if(selectionTool==="clone"||selectionTool==="heal"){repairBase=null;repairOffset=null;repairStrokeMask=null;repairChanged=false;repairLastPoint=null}
+  shapeStart=null;shapeBase=null;renderOverlay();
+};
 $("selectAll").onclick=()=>{selCtx.fillStyle="#fff";selCtx.fillRect(0,0,selectionCanvas.width,selectionCanvas.height);renderOverlay();updateMaskInfo()};
 $("clearMask").onclick=()=>{selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);renderOverlay();updateMaskInfo()};
 $("invertMask").onclick=()=>{if(!selectionCanvas.width)return;const im=selCtx.getImageData(0,0,selectionCanvas.width,selectionCanvas.height);for(let i=0;i<im.data.length;i+=4){const a=255-im.data[i+3];im.data[i]=im.data[i+1]=im.data[i+2]=255;im.data[i+3]=a}selCtx.putImageData(im,0,0);renderOverlay();updateMaskInfo()};
