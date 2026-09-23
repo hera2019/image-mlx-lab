@@ -57,9 +57,13 @@ Before any public release, run `python3 scripts/check_public_release.py` and rev
 - Copy/Cut/Paste must work across images. Paste remains a temporary layer until confirmed and supports position, proportional/non-proportional size, and opacity.
 - Mask is both a normal selection mechanism and the control region for AI local edit.
 - AI local edit must freeze the source image and Mask at request start.
-- AI local edit should normally send only a padded crop around the frozen Mask bounding box to Qwen, not a downscaled full frame.
+- AI local edit offers four context modes: Auto, Local-first, Local + full-image reference, and Full-frame.
+- Local-first sends only a padded high-resolution crop around the frozen Mask bounding box plus the local Mask.
+- Local + full-image reference sends the same local crop + local Mask and adds a low-resolution whole-image reference for subject identity, pose, background, texture continuity, and occlusion relationships.
+- Auto prefers Local-first for compact local edits; prompts involving removal, occlusion recovery, restoration, inpainting, reconstruction, or similar structural completion should resolve to Local + full-image reference. Geometrically broad/dispersed selections should also favor global reference.
+- Full-frame sends the complete frozen source + full Mask.
 - The crop must preserve enough surrounding context, use a safe MLX/Qwen processing size, then be placed back at the exact original coordinates. Small local crops currently aim for about a 640 px long side while respecting the visual-token and 1152 px safety limits.
-- If the padded crop covers most of the image (currently >=72%), automatically fall back to full-frame processing.
+- If Auto sees a padded crop covering most of the image (currently >=72%), automatically fall back to Full-frame.
 - Raw Qwen local-edit output is not a final image. Apply the frozen full-size Mask deterministically after the edited crop is placed back into the frozen source.
 - Outside the original frozen Mask, final pixels must remain unchanged. Reject the result if the safety check detects outside-Mask changes.
 - After successful AI local edit, save a new image, switch the editor to that new file, clear the old Mask, and start a fresh undo history.

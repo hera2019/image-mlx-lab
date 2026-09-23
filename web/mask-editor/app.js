@@ -457,28 +457,43 @@ function selectionToBW(maskCanvas=selectionCanvas){
   x.putImageData(alpha,0,0);return c;
 }
 function canvasCoverage(maskCanvas){
-  if(!maskCanvas.width)return 0;const d=maskCanvas.getContext("2d",{willReadFrequently:true}).getImageData(0,0,maskCanvas.width,maskCanvas.height).data;let n=0;
-  for(let i=3;i<d.length;i+=4)if(d[i]>8)n++;return n/(maskCanvas.width*maskCanvas.height);
+  if(!maskCanvas.width)return 0;
+  const d=maskCanvas.getContext("2d",{willReadFrequently:true}).getImageData(0,0,maskCanvas.width,maskCanvas.height).data;
+  let n=0;for(let i=3;i<d.length;i+=4)if(d[i]>8)n++;
+  return n/(maskCanvas.width*maskCanvas.height);
 }
-function safeLocalSizeFor(canvas){let w=canvas.width,h=canvas.height,s=1,t=(w/32)*(h/32)*2;if(t>1450)s=Math.sqrt(1450/t);if(Math.max(w*s,h*s)>1152)s*=1152/Math.max(w*s,h*s);return[round32(w*s),round32(h*s)]}
+function safeLocalSizeFor(canvas,refCount=2){
+  let w=canvas.width,h=canvas.height,s=1,t=(w/32)*(h/32)*refCount;
+  if(t>1450)s=Math.sqrt(1450/t);
+  if(Math.max(w*s,h*s)>1152)s*=1152/Math.max(w*s,h*s);
+  return[round32(w*s),round32(h*s)];
+}
 function roundLocal32(v){return Math.max(256,Math.min(1152,Math.round(v/32)*32))}
-function safeLocalCropSize(w,h){
+function safeLocalCropSize(w,h,refCount=2){
   const maxSide=Math.max(w,h),minSide=Math.max(1,Math.min(w,h));
-  const tokenScale=Math.sqrt(1450/Math.max(1,(w/32)*(h/32)*2));
+  const tokenScale=Math.sqrt(1450/Math.max(1,(w/32)*(h/32)*refCount));
   const sideScale=1152/maxSide;
   const maxScale=Math.min(tokenScale,sideScale);
   const desiredScale=Math.max(1,640/maxSide,320/minSide);
   let scale=Math.min(desiredScale,maxScale);
   if(maxScale<1)scale=maxScale;
   let tw=roundLocal32(w*scale),th=roundLocal32(h*scale);
-  while(((tw/32)*(th/32)*2>1450||Math.max(tw,th)>1152)&&(tw>256||th>256)){
+  while(((tw/32)*(th/32)*refCount>1450||Math.max(tw,th)>1152)&&(tw>256||th>256)){
     if(tw>=th&&tw>256)tw-=32;else if(th>256)th-=32;else break;
   }
   return[tw,th];
 }
 function cropCanvas(src,rect){
   const c=document.createElement("canvas");c.width=rect.w;c.height=rect.h;
-  c.getContext("2d").drawImage(src,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);return c;
+  c.getContext("2d").drawImage(src,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);
+  return c;
+}
+function makeContextPreview(src,maxSide=512){
+  const scale=Math.min(1,maxSide/Math.max(src.width,src.height));
+  const c=document.createElement("canvas");
+  c.width=Math.max(1,Math.round(src.width*scale));c.height=Math.max(1,Math.round(src.height*scale));
+  c.getContext("2d").drawImage(src,0,0,c.width,c.height);
+  return c;
 }
 function centeredSpan(start,size,target,max){
   target=Math.min(max,Math.max(size,Math.ceil(target)));
@@ -487,8 +502,8 @@ function centeredSpan(start,size,target,max){
 }
 function normalizeCropAspect(rect,W,H){
   let {x,y,w,h}=rect,r=w/h;
-  if(r<0.65){const s=centeredSpan(x,w,h*0.65,W);x=s.start;w=s.size}
-  else if(r>1.54){const s=centeredSpan(y,h,w/1.54,H);y=s.start;h=s.size}
+  if(r<0.65){const z=centeredSpan(x,w,h*0.65,W);x=z.start;w=z.size}
+  else if(r>1.54){const z=centeredSpan(y,h,w/1.54,H);y=z.start;h=z.size}
   return{x,y,w,h};
 }
 function alignCropRect(rect,W,H,align=8){
@@ -496,17 +511,51 @@ function alignCropRect(rect,W,H,align=8){
   const x1=Math.min(W,Math.ceil((rect.x+rect.w)/align)*align),y1=Math.min(H,Math.ceil((rect.y+rect.h)/align)*align);
   return{x:x0,y:y0,w:Math.max(1,x1-x0),h:Math.max(1,y1-y0)};
 }
-function planLocalAiRegion(sourceCanvas,maskCanvas,featherPx){
+function contextModeLabel(v){
+  return({auto:"自动",crop:"局部优先", "crop-full":"局部 + 整图参考",full:"整图"})[v]||v;
+}
+function promptNeedsGlobalContext(text){
+  return /(去掉|去除|移除|删除|消除|抹掉|遮挡|恢复|还原|补全|修复|重建|填补|露出|主体|背景|remove|erase|restore|recover|reconstruct|inpaint|repair|occlud|uncover|fill)/i.test(text||"");
+}
+function planLocalAiRegion(sourceCanvas,maskCanvas,featherPx,requestedMode="auto",userPrompt=""){
   const W=sourceCanvas.width,H=sourceCanvas.height,bbox=maskBBox(maskCanvas);if(!bbox)return null;
+  const coverage=canvasCoverage(maskCanvas);
   const pad=Math.max(48,Math.ceil(Math.max(bbox.w,bbox.h)*0.25),Math.ceil(featherPx*2+16));
   let x0=Math.max(0,bbox.x-pad),y0=Math.max(0,bbox.y-pad),x1=Math.min(W,bbox.x+bbox.w+pad),y1=Math.min(H,bbox.y+bbox.h+pad);
-  let crop=normalizeCropAspect({x:x0,y:y0,w:x1-x0,h:y1-y0},W,H);
-  crop=alignCropRect(crop,W,H,8);
-  const cropPercent=crop.w*crop.h/(W*H);
-  const useFull=cropPercent>=0.72;
-  if(useFull)crop={x:0,y:0,w:W,h:H};
-  const target=useFull?safeLocalSizeFor(sourceCanvas):safeLocalCropSize(crop.w,crop.h);
-  return{strategy:useFull?"full":"crop",bbox,crop,cropPercent:useFull?1:cropPercent,padding:pad,target};
+  let localCrop=normalizeCropAspect({x:x0,y:y0,w:x1-x0,h:y1-y0},W,H);
+  localCrop=alignCropRect(localCrop,W,H,8);
+
+  const localCropPercent=localCrop.w*localCrop.h/(W*H);
+  const bboxArea=Math.max(1,bbox.w*bbox.h),density=Math.min(1,(coverage*W*H)/bboxArea);
+  const span=Math.max(bbox.w/W,bbox.h/H);
+  const semanticGlobal=promptNeedsGlobalContext(userPrompt);
+
+  let strategy=requestedMode,reason="";
+  if(requestedMode==="auto"){
+    if(localCropPercent>=0.72){
+      strategy="full";reason="裁剪区域已接近整图";
+    }else if(semanticGlobal){
+      strategy="crop-full";reason="指令涉及去除 / 遮挡恢复 / 补全等全局结构";
+    }else if(localCropPercent>=0.28||span>=0.50||(bboxArea/(W*H)>=0.08&&density<0.40)){
+      strategy="crop-full";reason="选区跨度或分布较大，需要全局结构参考";
+    }else{
+      strategy="crop";reason="局部选区集中，优先保留局部细节";
+    }
+  }
+
+  let crop=localCrop,refCount=2;
+  if(strategy==="full")crop={x:0,y:0,w:W,h:H};
+  if(strategy==="crop-full")refCount=3;
+
+  const target=strategy==="full"
+    ?safeLocalSizeFor(sourceCanvas,2)
+    :safeLocalCropSize(crop.w,crop.h,refCount);
+
+  return{
+    requestedMode,strategy,reason,bbox,crop,padding:pad,
+    cropPercent:crop.w*crop.h/(W*H),localCropPercent,
+    coverage,density,span,refCount,target
+  };
 }
 function composeCropCandidate(sourceSnap,aiImg,crop){
   const c=cloneCanvas(sourceSnap),x=c.getContext("2d");
@@ -530,52 +579,94 @@ function hardMergeAi(aiCandidate,sourceSnap,maskSnap,featherPx){
   }
   ox.putImageData(dst,0,0);return{canvas:out,outsideChanged,insideChanged};
 }
-function localPlanText(plan,sourceSnap){
+function buildLocalAiPrompt(plan,user){
+  if(plan.strategy==="crop-full"){
+    return "<image1>是需要精细编辑的局部工作区域。<image2>是同一区域的黑白位置遮罩，白色区域是唯一允许修改的区域。"+
+      "<image3>是完整原图的低分辨率全局参考，只用于理解主体身份、姿态、背景、纹理连续性和遮挡关系，不是编辑目标。"+
+      user+"。请根据<image3>的全局结构，在<image1>内自然完成修改；严格保持<image2>黑色区域不变。";
+  }
+  if(plan.strategy==="full"){
+    return "<image1>是完整原图。<image2>是完整黑白位置遮罩，白色区域是唯一允许修改的区域，黑色区域禁止修改。"+
+      user+"。严格保持遮罩黑色区域对应的构图、颜色、纹理和透明度不变。";
+  }
+  return "<image1>是原图中包含目标的局部工作区域。<image2>是同一区域的黑白位置遮罩，白色区域是唯一允许修改的区域，黑色区域禁止修改。"+
+    user+"。严格保持黑色区域对应的构图、颜色、纹理和透明度不变；不要改变工作区域之外不存在的内容。";
+}
+function localPlanText(plan,sourceSnap,contextCanvas=null){
   const b=plan.bbox,c=plan.crop,[tw,th]=plan.target;
-  const strategy=plan.strategy==="crop"?"局部裁剪":"整图回退";
-  return strategy+" · 原图 "+sourceSnap.width+"×"+sourceSnap.height+
+  let line="上下文："+contextModeLabel(plan.strategy);
+  if(plan.requestedMode==="auto")line+="（自动："+plan.reason+"）";
+  line+=" · 原图 "+sourceSnap.width+"×"+sourceSnap.height+
     " · Mask bbox "+b.w+"×"+b.h+" @ "+b.x+","+b.y+
     " · 输入区域 "+c.w+"×"+c.h+" @ "+c.x+","+c.y+
     " · Qwen "+tw+"×"+th;
+  if(contextCanvas)line+=" · 整图参考 "+contextCanvas.width+"×"+contextCanvas.height;
+  return line;
 }
+const localContextHints={
+  auto:"自动：普通局部修改优先裁剪；遮挡恢复 / 补全等任务会增加整图参考。",
+  crop:"局部优先：只给高分辨率局部 + Mask，速度最快、局部细节最多。",
+  "crop-full":"局部 + 整图参考：局部负责细节，低分辨率整图负责主体 / 背景 / 遮挡关系。",
+  full:"整图：完整原图 + Mask 一起送模，最慢，但全局关系最完整。"
+};
+$("localAiContext").onchange=e=>$("localAiContextHint").textContent=localContextHints[e.target.value]||"";
 $("runLocalAi").onclick=async()=>{
   if(!workCanvas.width){notify("请先选择图片。","editor");return}
   const coverage=selectionCoverage();if(coverage<=0){notify("请先选择要 AI 编辑的区域。","editor");return}
   const user=$("localAiPrompt").value.trim();if(!user){notify("请输入 AI 局部编辑指令。","editor");return}
+
+  const requestedMode=$("localAiContext").value||"auto";
   const sourceSnap=cloneCanvas(workCanvas),maskSnap=cloneCanvas(selectionCanvas),featherPx=+$("feather").value||0;
-  const plan=planLocalAiRegion(sourceSnap,maskSnap,featherPx);if(!plan){notify("无法计算 Mask 区域。","editor");return}
+  const plan=planLocalAiRegion(sourceSnap,maskSnap,featherPx,requestedMode,user);
+  if(!plan){notify("无法计算 Mask 区域。","editor");return}
+
   const sourceKey=editorSource?.url||editorSource?.name||"draft",historyAtStart=workHistoryIndex,[w,h]=plan.target;
   const qwenSource=cropCanvas(sourceSnap,plan.crop),qwenMask=cropCanvas(maskSnap,plan.crop);
-  const prompt="<image1>是原图中包含目标的工作区域。<image2>是同一区域的黑白位置遮罩：白色区域是唯一允许修改的区域，黑色区域禁止修改。"+
-    user+"。严格保持黑色区域对应的构图、颜色、纹理和透明度不变；不要改变工作区域之外不存在的内容。";
+  const contextCanvas=plan.strategy==="crop-full"?makeContextPreview(sourceSnap,512):null;
+  const prompt=buildLocalAiPrompt(plan,user);
+
   const btn=$("runLocalAi"),oldText=btn.textContent;btn.disabled=true;btn.textContent="AI 编辑中…";
-  notify("AI 局部编辑中…\nMask "+(coverage*100).toFixed(1)+"% · 原图与 Mask 已冻结。\n"+localPlanText(plan,sourceSnap)+
-    (plan.strategy==="crop"?"\n仅把局部区域送给 Qwen，完成后贴回原图。":"\n选区分布太广，自动回退到整图送模。"),"editor");
+  notify("AI 局部编辑中…\nMask "+(coverage*100).toFixed(1)+"% · 原图与 Mask 已冻结。\n"+
+    localPlanText(plan,sourceSnap,contextCanvas)+
+    (plan.strategy==="crop"?"\n仅局部送模。":
+     plan.strategy==="crop-full"?"\n局部负责细节，同时提供整图低分辨率全局参考。":"\n完整原图送模。"),"editor");
   try{
-    const r=await fetch("/api/mask-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+    const payload={
       prompt,size:w+"x"+h,steps:+$("localAiSteps").value||20,seed:+$("localAiSeed").value||42,
-      image_b64:dataUrlToB64(qwenSource.toDataURL("image/png")),mask_b64:dataUrlToB64(selectionToBW(qwenMask).toDataURL("image/png")),
-      source_size:qwenSource.width+"x"+qwenSource.height,full_source_size:sourceSnap.width+"x"+sourceSnap.height,
-      mask_percent:+(coverage*100).toFixed(2),local_strategy:plan.strategy,
+      image_b64:dataUrlToB64(qwenSource.toDataURL("image/png")),
+      mask_b64:dataUrlToB64(selectionToBW(qwenMask).toDataURL("image/png")),
+      source_size:qwenSource.width+"x"+qwenSource.height,
+      full_source_size:sourceSnap.width+"x"+sourceSnap.height,
+      mask_percent:+(coverage*100).toFixed(2),
+      requested_context_mode:requestedMode,resolved_context_mode:plan.strategy,
+      local_strategy:plan.strategy,
       mask_bbox:[plan.bbox.x,plan.bbox.y,plan.bbox.w,plan.bbox.h],
       crop_rect:[plan.crop.x,plan.crop.y,plan.crop.w,plan.crop.h],
       crop_percent:+(plan.cropPercent*100).toFixed(2)
-    })}),j=await r.json();
+    };
+    if(contextCanvas){
+      payload.context_b64=dataUrlToB64(contextCanvas.toDataURL("image/png"));
+      payload.context_size=contextCanvas.width+"x"+contextCanvas.height;
+    }
+
+    const r=await fetch("/api/mask-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),j=await r.json();
     if(!r.ok)throw new Error(j.error||"AI 编辑失败");
     if((editorSource?.url||editorSource?.name||"draft")!==sourceKey||workHistoryIndex!==historyAtStart){
       notify("AI 已生成完成，但生成期间当前草稿发生了变化，所以结果没有自动应用。请重新点击 AI 编辑选区。","editor");return;
     }
+
     const im=await imgFromUrl("data:image/png;base64,"+j.b64_json);
     const candidate=composeCropCandidate(sourceSnap,im,plan.crop),merged=hardMergeAi(candidate,sourceSnap,maskSnap,featherPx);
     if(merged.outsideChanged!==0)throw new Error("安全检查失败：Mask 外检测到 "+merged.outsideChanged+" 个像素变化，结果已拒绝应用");
     commitWork(merged.canvas,maskSnap,"AI 局部编辑");
+
     const base=(editorSource?.name||"image").replace(/\.[^.]+$/,"");
     const saveReq=await fetch("/api/save-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
       image_b64:dataUrlToB64(merged.canvas.toDataURL("image/png")),
-      name:base+"_AI局部编辑",
-      source_url:editorSource?.url
+      name:base+"_AI局部编辑",source_url:editorSource?.url
     })}),saved=await saveReq.json();
     if(!saveReq.ok)throw new Error(saved.error||"AI结果自动保存失败");
+
     await refreshAssets();
     const savedAsset=assets.find(a=>a.url===saved.url)||{url:saved.url,name:saved.name,kind:"edited"};
     const savedImg=await imgFromUrl(saved.url);
@@ -591,7 +682,7 @@ $("runLocalAi").onclick=async()=>{
     const perf=formatPerf(j.perf);$("localAiPerf").textContent=perf;
     notify("AI 局部编辑完成并已自动保存到右侧图片库。\n已切换到新图片："+saved.name+
       "\n旧图仍保留；旧 Mask 已清空；编辑历史已从新图片重新开始。"+
-      "\n"+localPlanText(plan,sourceSnap)+
+      "\n"+localPlanText(plan,sourceSnap,contextCanvas)+
       "\n本次 Mask "+(coverage*100).toFixed(1)+"% · Mask 外像素安全检查：0 个变化 · Mask 内变化 "+merged.insideChanged+" 个像素"+
       (featherPx?" · 羽化仅向 Mask 内部过渡":"")+"\n"+perf,"editor");
   }catch(e){notify("AI 编辑失败："+e.message,"editor")}

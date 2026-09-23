@@ -214,7 +214,14 @@ class Handler(SimpleHTTPRequestHandler):
                 payload.update({"mode":"edit","image":req["image_b64"]}); ref_count=1+len(refs)
                 if refs: payload["ref_images"]=refs
             elif mode=="mask-edit":
-                payload.update({"mode":"edit","image":req["image_b64"],"ref_images":[req["mask_b64"]]}); ref_count=2
+                refs=[req["mask_b64"]]
+                context_b64=req.get("context_b64")
+                if context_b64:
+                    refs.append(context_b64)
+                if len(refs)>3:
+                    raise ValueError("Mask 编辑参考图数量超出当前 MLX 上限")
+                payload.update({"mode":"edit","image":req["image_b64"],"ref_images":refs})
+                ref_count=1+len(refs)
             row.update({
                 "model":model,"size":size,"width":w,"height":h,"steps":steps,"seed":seed,
                 "history_hidden":mode=="mask-edit","condition_images":ref_count,
@@ -222,6 +229,9 @@ class Handler(SimpleHTTPRequestHandler):
                 "prompt_chars":len(prompt),"prompt_preview":prompt[:90],
                 "source_size":req.get("source_size"),"full_source_size":req.get("full_source_size"),
                 "mask_percent":req.get("mask_percent"),"local_strategy":req.get("local_strategy"),
+                "requested_context_mode":req.get("requested_context_mode"),
+                "resolved_context_mode":req.get("resolved_context_mode"),
+                "context_size":req.get("context_size"),
                 "mask_bbox":req.get("mask_bbox"),"crop_rect":req.get("crop_rect"),
                 "crop_percent":req.get("crop_percent"),
                 "strength":req.get("strength"),"rss_before_mb":proc_rss_mb(),
