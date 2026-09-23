@@ -80,6 +80,8 @@ After changing web UI code:
 - Prefer refreshing the existing page.
 - If automatic refresh is not practical, tell the user to refresh manually.
 - Status/progress messages belong in the fixed bottom status drawer and should remain visible while the page scrolls.
+- The fixed status drawer should visually read as an overlay: semi-transparent/glass-like, with blur and an elevated shadow so users can perceive that page content continues underneath it.
+- When a collapsible tool section in the image-editor left sidebar is opened, automatically scroll that sidebar enough to reveal the newly expanded content instead of leaving the expansion below the visible area.
 - The bottom status drawer is collapsed by default. Long-running work (generation / AI edit), important completion notices, validation problems, and errors may open it automatically. Routine informational messages should be logged without forcing it open.
 
 ## Development workflow

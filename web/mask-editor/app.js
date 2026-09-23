@@ -15,6 +15,22 @@ const sourceCanvas=$("sourceCanvas"),displayCtx=sourceCanvas.getContext("2d",{wi
 const overlayCanvas=$("overlayCanvas"),overlayCtx=overlayCanvas.getContext("2d",{willReadFrequently:true});
 const editorStage=$("editorStage"),editorViewport=$("editorViewport");
 
+function revealOpenedEditorSection(detail){
+  if(!detail?.open||!editorTools||editorTools.classList.contains("hidden"))return;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    if(editorTools.scrollHeight>editorTools.clientHeight+2){
+      const paneRect=editorTools.getBoundingClientRect(),detailRect=detail.getBoundingClientRect();
+      const target=editorTools.scrollTop+(detailRect.top-paneRect.top)-4;
+      editorTools.scrollTo({top:Math.max(0,target),behavior:"smooth"});
+    }else{
+      detail.scrollIntoView({behavior:"smooth",block:"start",inline:"nearest"});
+    }
+  }));
+}
+document.querySelectorAll("#editorTools > details").forEach(detail=>{
+  detail.addEventListener("toggle",()=>{if(detail.open)revealOpenedEditorSection(detail)});
+});
+
 function dataUrlToB64(url){return url.split(",")[1]}
 function imgFromUrl(url){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=url})}
 function assetFromDataUrl(name,dataUrl){return imgFromUrl(dataUrl).then(img=>({name,dataUrl,b64:dataUrlToB64(dataUrl),w:img.naturalWidth,h:img.naturalHeight,img}))}
