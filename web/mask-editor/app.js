@@ -522,7 +522,7 @@ function healMaskedArea(maskCanvas){
   const pad=Math.max(8,Math.ceil(repairBrushSize()*1.4));
   const x0=Math.max(0,bbox.x-pad),y0=Math.max(0,bbox.y-pad),x1=Math.min(workCanvas.width,bbox.x+bbox.w+pad),y1=Math.min(workCanvas.height,bbox.y+bbox.h+pad);
   const w=x1-x0,h=y1-y0,n=w*h;
-  if(n>1800000){notify("修复区域太大。修复画笔适合小污点/划痕；大区域请用克隆图章或 AI 局部编辑。","editor","important");return false}
+  if(n>350000){notify("修复区域太大。修复画笔适合小污点/划痕；大区域请用克隆图章或 AI 局部编辑。","editor","important");return false}
   const src=workCtx.getImageData(x0,y0,w,h),mask=maskCanvas.getContext("2d",{willReadFrequently:true}).getImageData(x0,y0,w,h);
   const hole=new Uint8Array(n);let holeCount=0;
   for(let i=0;i<n;i++){if(mask.data[i*4+3]>8){hole[i]=1;holeCount++}}
@@ -543,7 +543,7 @@ function healMaskedArea(maskCanvas){
   if(!bc)return false;
   const avg=[br/bc,bg/bc,bb/bc,ba/bc],curr=new Float32Array(n*4),next=new Float32Array(n*4);
   for(let i=0;i<n;i++){const k=i*4;for(let c=0;c<4;c++)curr[k+c]=hole[i]?avg[c]:src.data[k+c]}
-  const iterations=Math.min(140,Math.max(36,Math.round(Math.max(bbox.w,bbox.h)*.7)));
+  const iterations=Math.min(80,Math.max(28,Math.round(Math.max(bbox.w,bbox.h)*.55)));
   for(let it=0;it<iterations;it++){
     next.set(curr);
     for(let y=0;y<h;y++)for(let x=0;x<w;x++){
@@ -734,8 +734,12 @@ overlayCanvas.onpointerup=e=>{
 };
 overlayCanvas.onpointercancel=()=>{
   drawing=false;if(selectionTool==="lassoAdd"||selectionTool==="lassoSub")lassoPoints=[];
-  if(selectionTool==="clone"||selectionTool==="heal"){repairBase=null;repairOffset=null;repairStrokeMask=null;repairChanged=false;repairLastPoint=null}
-  shapeStart=null;shapeBase=null;renderOverlay();
+  if(selectionTool==="clone"){
+    if(repairBase){workCanvas.width=repairBase.width;workCanvas.height=repairBase.height;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(repairBase,0,0)}
+    repairBase=null;repairOffset=null;repairChanged=false;repairLastPoint=null;
+  }
+  if(selectionTool==="heal"){repairStrokeMask=null;repairLastPoint=null}
+  shapeStart=null;shapeBase=null;renderEditor();
 };
 $("selectAll").onclick=()=>{selCtx.fillStyle="#fff";selCtx.fillRect(0,0,selectionCanvas.width,selectionCanvas.height);renderOverlay();updateMaskInfo()};
 $("clearMask").onclick=()=>{selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);renderOverlay();updateMaskInfo()};
