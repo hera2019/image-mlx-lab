@@ -126,3 +126,12 @@ hr{margin:10px 0}.big{padding:7px;margin-top:6px}.wideBtn{margin-top:4px}
   .assetPanel{grid-column:auto}
   .editorViewport{min-height:330px;max-height:60vh}
 }
+
+/* v14 brand icon */
+.globalBrand{display:flex;align-items:center;justify-content:center;gap:7px;text-align:left}
+.globalBrandText{line-height:1.08}
+.brandIcon{width:28px;height:28px;border-radius:7px;display:block;flex:none}
+@media(max-width:850px){
+  .globalBrand{justify-content:flex-start}
+  .brandIcon{width:26px;height:26px}
+}

@@ -60,6 +60,7 @@ Before any public release, run `python3 scripts/check_public_release.py` and rev
 - AI local edit offers four context modes: Auto, Local-first, Local + full-image reference, and Full-frame.
 - Local-first sends only a padded high-resolution crop around the frozen Mask bounding box plus the local Mask.
 - Local + full-image reference sends the same local crop + local Mask and adds a low-resolution whole-image reference for subject identity, pose, background, texture continuity, and occlusion relationships.
+- Because a whole-image reference can sometimes make Qwen return a full-frame composition instead of the requested local framing, the browser must classify the returned framing. If the result is full-frame-like, map the original crop coordinates into that result and extract only the corresponding region before compositing; never shrink an entire returned frame into the local Mask region.
 - Auto prefers Local-first for compact local edits; prompts involving removal, occlusion recovery, restoration, inpainting, reconstruction, or similar structural completion should resolve to Local + full-image reference. Geometrically broad/dispersed selections should also favor global reference.
 - Full-frame sends the complete frozen source + full Mask.
 - The crop must preserve enough surrounding context, use a safe MLX/Qwen processing size, then be placed back at the exact original coordinates. Small local crops currently aim for about a 640 px long side while respecting the visual-token and 1152 px safety limits.
@@ -76,6 +77,7 @@ After changing web UI code:
 - Prefer refreshing the existing page.
 - If automatic refresh is not practical, tell the user to refresh manually.
 - Status/progress messages belong in the fixed bottom status drawer and should remain visible while the page scrolls.
+- The bottom status drawer is collapsed by default. Long-running work (generation / AI edit), important completion notices, validation problems, and errors may open it automatically. Routine informational messages should be logged without forcing it open.
 
 ## Development workflow
 

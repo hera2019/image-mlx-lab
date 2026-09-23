@@ -164,6 +164,13 @@ class Handler(SimpleHTTPRequestHandler):
                         "source_url":req.get("source_url"),"output_url":url,
                         "output_path":str(path),"output_bytes":decoded_size(encoded),
                         "history_hidden":False,
+                        "edit_kind":req.get("edit_kind"),
+                        "ai_context_mode":req.get("ai_context_mode"),
+                        "ai_framing_mode":req.get("ai_framing_mode"),
+                        "ai_framing_local_score":req.get("ai_framing_local_score"),
+                        "ai_framing_full_score":req.get("ai_framing_full_score"),
+                        "mask_bbox":req.get("mask_bbox"),"crop_rect":req.get("crop_rect"),
+                        "mask_percent":req.get("mask_percent"),
                     })
                 return self._json(200,{"url":url,"name":path.name,"kind":kind})
             except Exception as e:

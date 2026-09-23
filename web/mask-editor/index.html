@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Image MLX Lab</title>
-<link rel="stylesheet" href="app.css?v=11">
+<link rel="icon" type="image/svg+xml" href="assets/image-mlx-lab-icon.svg">
+<link rel="stylesheet" href="app.css?v=12">
 </head>
 <body><div class="app">
 <header class="topbar compactTopbar">
   <div class="topbarSpacer"></div>
-  <div class="globalBrand"><h1>Image MLX Lab</h1><p>Qwen-Image-2.1 MLX · 本机生成与非破坏式图片编辑</p></div>
+  <div class="globalBrand"><img class="brandIcon" src="assets/image-mlx-lab-icon.svg" alt=""><div class="globalBrandText"><h1>Image MLX Lab</h1><p>Qwen-Image-2.1 MLX · 本机生成与非破坏式图片编辑</p></div></div>
   <div class="server"><span id="qwenBadge" class="badge off">Qwen 检查中</span><span id="memBadge" class="badge">内存 —</span><button id="refreshStatus">刷新</button></div>
 </header>
 
@@ -32,7 +33,7 @@
     <section id="panel-variation" class="modePanel hidden">
       <h2>图生图 / Variation</h2>
       <div class="hint">主图就是中间当前图片。也可以直接载入新图。</div>
-      <label class="filebtn">载入主图<input id="variationFile" type="file" accept="image/*"></label> <button id="variationSample">测试鱼</button>
+      <label class="filebtn">载入主图<input id="variationFile" type="file" accept="image/*"></label>
       <div id="variationInfo" class="fileInfo">尚未选择主图</div>
       <label>目标描述<textarea id="variationPrompt" placeholder="希望当前主图变成什么样"></textarea></label>
       <label>Strength <b id="strengthVal">0.45</b><input id="strength" type="range" min="0.05" max="1" step="0.05" value="0.45"></label>
@@ -41,7 +42,7 @@
     <section id="panel-edit" class="modePanel hidden">
       <h2>整图 True Edit</h2>
       <div class="hint">主图就是中间当前图片。右侧点击任意正式图片即可切换主图。</div>
-      <label class="filebtn">载入主图<input id="editFile" type="file" accept="image/*"></label> <button id="editSample">测试鱼</button>
+      <label class="filebtn">载入主图<input id="editFile" type="file" accept="image/*"></label>
       <div id="editInfo" class="fileInfo">尚未选择主图</div>
       <label class="filebtn">＋ 添加参考图到队列<input id="editRefs" type="file" accept="image/*" multiple></label>
       <div class="hint">队列可保存多张；当前最多启用 3 张额外参考图（加主图共 4 张）。</div>
@@ -155,7 +156,7 @@
 <div id="history" class="hidden"></div><button id="refreshHistory" class="hidden">刷新</button>
 </div>
 
-<details id="globalNoticeDrawer" class="globalNoticeDrawer" open>
+<details id="globalNoticeDrawer" class="globalNoticeDrawer">
   <summary><span class="drawerHandle"></span><span>状态 / 提示</span><span id="noticeSummary">就绪</span></summary>
   <div class="globalNoticeContent">
     <div id="noticeDetail" class="noticeDetail">就绪</div>
@@ -163,5 +164,5 @@
   </div>
 </details>
 
-<script src="app.js?v=13"></script>
+<script src="app.js?v=16"></script>
 </body></html>

@@ -1,5 +1,7 @@
 # Image MLX Lab
 
+<img src="assets/image-mlx-lab-icon.svg" width="80" alt="Image MLX Lab icon">
+
 > Project-wide agent/development rules: `docs/PROJECT_GUIDE.md`
 
 Image MLX Lab 是一个面向 Apple Silicon / MLX 的本地图像生成与编辑研究工作台。当前后端是 Qwen-Image-2.1；项目命名不绑定具体模型，后续可以继续接入其他 MLX 图像模型。
