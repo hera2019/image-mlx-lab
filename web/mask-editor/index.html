@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Image MLX Lab</title>
 <link rel="icon" type="image/svg+xml" href="assets/image-mlx-lab-icon.svg">
-<link rel="stylesheet" href="app.css?v=16">
+<link rel="stylesheet" href="app.css?v=21">
 </head>
 <body><div class="app">
 <header class="topbar compactTopbar">
@@ -13,12 +13,20 @@
   <div class="server"><span id="qwenBadge" class="badge off">Qwen 检查中</span><span id="memBadge" class="badge">内存 —</span><button id="refreshStatus">刷新</button></div>
 </header>
 
-<nav class="tabs">
-  <button data-mode="generate" class="active">文生图</button>
-  <button data-mode="variation">图生图</button>
-  <button data-mode="edit">整图 Edit</button>
-  <button data-mode="editor">图片编辑</button>
-</nav>
+<div class="workspaceTopRow">
+  <nav class="tabs">
+    <button data-mode="generate" class="active">文生图</button>
+    <button data-mode="variation">图生图</button>
+    <button data-mode="edit">指令编辑</button>
+    <button data-mode="editor">图片编辑</button>
+  </nav>
+  <div class="editorTopbar">
+    <div class="zoomStrip"><button id="zoomOut">−</button><select id="viewZoom"><option value="fit">适合窗口</option><option value="0.25">25%</option><option value="0.5">50%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select><button id="zoomIn">＋</button></div>
+    <div class="historyStrip"><button id="undoImage">↶ 撤销</button><button id="redoImage">↷ 重做</button><button id="resetDraft">恢复原图</button><button id="saveEditor" class="primary">保存为新图</button><button id="overwriteEditor">覆盖当前图</button><button id="downloadDraft">下载当前草稿</button></div>
+    <div id="editorMeta" class="editorMeta">—</div>
+  </div>
+  <div class="topRowSpacer"></div>
+</div>
 
 <div id="mainWorkspace" class="editorWorkspace">
 <aside class="leftModeStack">
@@ -31,8 +39,8 @@
     </section>
 
     <section id="panel-variation" class="modePanel hidden">
-      <h2>图生图 / Variation</h2>
-      <div class="hint">主图就是中间当前图片。也可以直接载入新图。</div>
+      <h2>图生图 / 相似变体</h2>
+      <div class="hint">根据原图生成相似的新版本，适合风格、构图或整体变化；不适合“只改衣服颜色”这类精确属性修改。需要明确修改指定内容时，请使用「指令编辑 / True Edit」。主图默认使用中间当前图片，也可以直接载入新图。</div>
       <label class="filebtn">载入主图<input id="variationFile" type="file" accept="image/*"></label>
       <div id="variationInfo" class="fileInfo">尚未选择主图</div>
       <label>目标描述<textarea id="variationPrompt" placeholder="希望当前主图变成什么样"></textarea></label>
@@ -40,8 +48,8 @@
     </section>
 
     <section id="panel-edit" class="modePanel hidden">
-      <h2>整图 True Edit</h2>
-      <div class="hint">主图就是中间当前图片。右侧点击任意正式图片即可切换主图。</div>
+      <h2>指令编辑 / True Edit</h2>
+      <div class="hint">按文字指令修改现有图片，例如改衣服颜色、改材质、替换指定对象或调整局部属性；更适合明确的编辑任务。主图默认使用中间当前图片，右侧点击任意正式图片即可切换。</div>
       <label class="filebtn">载入主图<input id="editFile" type="file" accept="image/*"></label>
       <div id="editInfo" class="fileInfo">尚未选择主图</div>
       <label class="filebtn">＋ 添加参考图到队列<input id="editRefs" type="file" accept="image/*" multiple></label>
@@ -77,9 +85,10 @@
         <button id="wandAddTool">🪄 魔棒＋</button><button id="wandSubTool">🪄 魔棒－</button>
       </div>
       <label>画笔 <b id="brushVal">42</b> px<input id="brush" type="range" min="4" max="240" value="42"></label>
-      <div class="two"><label>魔棒容差<input id="wandTolerance" type="number" min="0" max="255" value="28"></label><label class="check">连续区域<input id="wandContiguous" type="checkbox" checked></label></div>
+      <label>魔棒容差<input id="wandTolerance" type="number" min="0" max="255" value="28"></label>
+      <div class="two maskToggleRow"><label class="check"><input id="wandContiguous" type="checkbox" checked><span>连续区域</span></label><label class="check"><input id="showMask" type="checkbox" checked><span>显示 Mask</span></label></div>
       <div class="two"><button id="selectAll">全选</button><button id="invertMask">反选</button></div>
-      <div class="two"><button id="clearMask">清除选区</button><label class="check"><input id="showMask" type="checkbox" checked>显示 Mask</label></div>
+      <button id="clearMask" class="wideBtn">清除选区</button>
       <div class="selectionMorphRow"><label>边界 <input id="selectionMorphPx" type="number" min="1" max="64" value="3"> px</label><button id="expandMask">扩展</button><button id="contractMask">收缩</button></div>
       <div class="hint">扩展适合 AI 去遮挡时吃掉残边；收缩可避免修改碰到主体边缘。</div>
       <label>边缘羽化 <b id="featherVal">0</b> px<input id="feather" type="range" min="0" max="60" value="0"></label>
@@ -144,11 +153,6 @@
 </aside>
 
 <main class="editorCenter card">
-  <div class="editorTopbar">
-    <div class="zoomStrip"><button id="zoomOut">−</button><select id="viewZoom"><option value="fit">适合窗口</option><option value="0.25">25%</option><option value="0.5">50%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select><button id="zoomIn">＋</button></div>
-    <div class="historyStrip"><button id="undoImage">↶ 撤销</button><button id="redoImage">↷ 重做</button><button id="resetDraft">恢复原图</button><button id="saveEditor" class="primary">保存为新图</button><button id="overwriteEditor">覆盖当前图</button><button id="downloadDraft">下载当前草稿</button></div>
-    <div id="editorMeta" class="editorMeta">—</div>
-  </div>
   <div class="cardTitle editorTitleRow"><h2 id="editorTitle">当前主图</h2><span>右侧点击图片即可切换；顶部模式只改变左栏</span></div>
   <div id="editorEmpty" class="empty">从右侧图片库选择图片，或在左侧载入 / 生成</div>
   <div id="editorViewport" class="editorViewport hidden"><div id="editorStage" class="editorStage"><canvas id="sourceCanvas"></canvas><canvas id="overlayCanvas"></canvas></div></div>
@@ -157,9 +161,11 @@
 <aside class="assetPanel card">
   <div class="assetHead"><div><h2>图片库</h2><span>始终存在 · 点击切换中间主图</span></div><button id="refreshAssets">刷新</button></div>
   <select id="assetFilter"><option value="final" selected>正式图片</option><option value="all">全部（含中间结果）</option><option value="generated">生成</option><option value="loaded">载入</option><option value="edited">编辑保存</option><option value="intermediate">中间结果</option></select>
-  <div class="hint">原图、上一代、生成图和编辑图都在这里。点击任意图片只切换中间主图，不改变当前顶部模式。</div>
   <div id="assetGallery" class="assetGallery"></div>
-  <div class="futureBox"><b>以后可扩充</b><span>文字 · 效果 · 图形 · 模板……</span></div>
+  <section class="sideNoticePanel" aria-label="状态与提示">
+    <div class="sideNoticeTitle">状态 / 提示</div>
+    <div id="noticeHistory" class="noticeHistory sideNoticeHistory"></div>
+  </section>
 </aside>
 </div>
 
@@ -179,13 +185,5 @@
   </form>
 </dialog>
 
-<details id="globalNoticeDrawer" class="globalNoticeDrawer">
-  <summary><span class="drawerHandle"></span><span>状态 / 提示</span><span id="noticeSummary">就绪</span></summary>
-  <div class="globalNoticeContent">
-    <div id="noticeDetail" class="noticeDetail">就绪</div>
-    <div id="noticeHistory" class="noticeHistory"></div>
-  </div>
-</details>
-
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body></html>

@@ -42,14 +42,11 @@ function round32(v){return Math.max(256,Math.min(2048,Math.round(v/32)*32))}
 function roleLabel(v){return({identity:"身份/五官",pose:"姿态",clothes:"服装/配饰",style:"风格",detail:"细节",other:"其他"})[v]||"参考"}
 let genPerfText="";
 let noticeLog=[];
-let noticeSelected=0;
 function renderNoticeHistory(){
   const box=$("noticeHistory");if(!box)return;box.innerHTML="";
-  noticeLog.forEach((item,i)=>{
-    const row=document.createElement("div");row.className="noticeHistoryItem"+(i===noticeSelected?" active":"");
-    const first=item.message.split("\n")[0]||"状态";
-    row.innerHTML="<b>"+escapeHtml(item.time)+" · "+escapeHtml(item.scope)+"</b>"+escapeHtml(first);
-    row.onclick=()=>{noticeSelected=i;$("noticeDetail").textContent=item.message;renderNoticeHistory()};
+  noticeLog.forEach(item=>{
+    const row=document.createElement("div");row.className="noticeHistoryItem";
+    row.innerHTML="<b>"+escapeHtml(item.time)+" · "+escapeHtml(item.scope)+"</b><span>"+escapeHtml(item.message)+"</span>";
     box.appendChild(row);
   });
   box.scrollTop=0;
@@ -59,19 +56,7 @@ function notify(message,scope=null,attention="quiet"){
   const text=String(message),time=new Date().toLocaleTimeString("zh-CN",{hour12:false});
   noticeLog.unshift({time,scope:kind,message:text});
   if(noticeLog.length>80)noticeLog.length=80;
-  noticeSelected=0;
-  if($("noticeDetail"))$("noticeDetail").textContent=text;
-  if($("noticeSummary"))$("noticeSummary").textContent=(text.split("\n")[0]||"状态");
   renderNoticeHistory();
-
-  // Backward compatibility for older call sites that passed true/false.
-  if(attention===true)attention="important";
-  if(attention===false)attention="quiet";
-
-  const autoImportant=/(失败|错误|无法|离线|拒绝|安全检查|超出|请先|请输入|没有自动应用|已删除)/.test(text);
-  const shouldOpen=attention==="progress"||attention==="important"||attention==="error"||autoImportant;
-  const drawer=$("globalNoticeDrawer");
-  if(drawer&&shouldOpen)drawer.open=true;
 }
 function formatPerf(p){
   if(!p)return "";
@@ -1085,4 +1070,4 @@ async function refreshStatus(){
 }
 $("refreshStatus").onclick=refreshStatus;
 
-clipboardControls();refreshStatus();loadHistory();refreshAssets();autoGenSize();setMode("generate");notify("就绪。生成或编辑过程中的状态都会保留在这里；右侧列表可回看历史提示。","gen",false);
+clipboardControls();refreshStatus();loadHistory();refreshAssets();autoGenSize();setMode("generate");notify("就绪。状态提示会保留在右侧栏；最新一条始终显示在最上面。","gen",false);
