@@ -15,7 +15,12 @@ This is the canonical project instruction document for humans and coding agents.
 
 - Work only inside this repository unless the user explicitly authorizes another path.
 - External model weights are read from `~/Documents/AI-Models/`; do not delete, move, replace, or download large model files without explicit permission.
-- Never expose the local web UI or model server beyond localhost without explicit permission.
+- Never expose the local web UI or model server beyond localhost without explicit permission. LAN access is a possible future feature; it must be an explicit opt-in, not a default.
+- The web server (`web/mask-editor/server.py`) is a security boundary even on localhost. Keep its guards:
+  - serve only the UI files in `web/mask-editor/` (no backups, logs, `__pycache__`, dotfiles) and library images directly inside `results/{web,library,intermediate}/`; never the repo root, `.git`, other `results/` data or settings;
+  - reject requests whose `Host` is not `127.0.0.1:18080` / `localhost:18080` (DNS-rebinding guard);
+  - accept POSTs only as `application/json` from the Workbench origin (`Origin` / `Sec-Fetch-Site` checks) so other websites cannot delete, overwrite or generate through it;
+  - do not add CORS headers.
 - Never upload user images, generated images, intermediate model outputs, logs, or performance data to GitHub.
 - Never assume `results/` is disposable. It is private local data and must be preserved unless the user explicitly asks to delete it.
 - Do not force-push or rewrite Git history unless explicitly requested.
@@ -27,6 +32,11 @@ This is the canonical project instruction document for humans and coding agents.
 - Model weights live outside the repository under `~/Documents/AI-Models/image/`.
 - Local runtime source/build lives in ignored `worktrees/mlx-serve/`.
 - `scripts/setup_model.py --runtime-only` pins the expected mlx-serve commit and applies `patches/qwen-image-2.1-true-edit-mlx.patch`.
+- True Edit and AI local edit need `text_encoder/qwen21_visual.safetensors` inside the model folder (the Qwen3-VL visual tower, ~1.1 GB, cut from the official BF16 shard by `scripts/fetch_edit_vision.py`). It is optional per variant: `setup_model.py` asks (or takes `--edit-vision` / `--skip-edit-vision`; non-interactive default is skip), and the server refuses those two modes with a clear message when the running variant lacks it. Never download it without the user's choice.
+- The web server owns the model process. On start it launches `scripts/start_server.sh` with the saved variant unless an `mlx-serve` is already listening (`server.py --no-model` skips this for UI-only work).
+- Model variants: 4-bit and 8-bit. The default is recommended from installed variants and total RAM (8-bit only at >=48 GB). The user can choose the variant and "skip memory preflight" in the UI; the choice is saved in `results/settings.json`. Switching stops the running `mlx-serve` and starts the other variant; it is refused while a model job runs.
+- Model log: `~/.mlx-serve/logs/image-mlx-lab-model.log`. When a start fails, the UI shows the relevant log lines and explains memory-preflight refusals.
+- Only one model job (generation / variation / True Edit / AI local edit / model switch) runs at a time; the server returns 409 for a second one and 503 while the model is not ready.
 - The patch must continue to apply cleanly to the pinned runtime commit.
 
 ## Private local data
@@ -38,6 +48,7 @@ Important subdirectories:
 - `results/library/`: locally loaded images.
 - `results/intermediate/`: raw model intermediate outputs; not final Mask results.
 - `results/performance/`: generation timing and memory/swap logs.
+- `results/settings.json`: the model variant / memory-preflight choice made in the UI.
 - Other `results/*` folders are local experiments and must not be published.
 
 Before any public release, run `python3 scripts/check_public_release.py` and review `PUBLIC_RELEASE.md`.
@@ -53,7 +64,9 @@ Before any public release, run `python3 scripts/check_public_release.py` and rev
 - Editing is non-destructive by default.
 - Manual editor saves offer two explicit choices: **Save as new image** (default/non-destructive) or **Overwrite current image**. Overwrite requires explicit confirmation and is allowed only for files managed inside the Workbench results library.
 - The editor tracks a saved history index. Undo/Redo must restore exact image + Mask snapshots symmetrically, and the UI must indicate whether the current draft has unsaved pixel changes.
-- When switching to another image with unsaved changes, never silently discard the draft. Offer: save as new + switch, overwrite current + switch (when allowed), discard + switch, or cancel.
+- When switching to another image with unsaved changes, never silently discard the draft. Offer: save as new + switch, overwrite current + switch (when allowed), discard + switch, or cancel. This applies to every switch, including a finished generation opening its result; if the user cancels, the result stays in the library. Esc / closing the dialog means cancel.
+- Closing or reloading the page with an unsaved draft, a pending adjustment preview, or an unconfirmed Paste must trigger the browser's leave-page confirmation.
+- With no image loaded the center shows the empty-state hint and save / overwrite / download / undo controls are disabled.
 - The right image library may show loaded, generated, edited, and intermediate images; intermediate images must be clearly labeled and not confused with final outputs.
 - If an image selection exists, brightness/contrast/saturation/blur/sharpen operate on the selection; otherwise they operate on the whole image.
 - Viewer zoom is center-anchored: changing zoom must preserve the same image coordinate at the center of the viewport (within normal pixel rounding).
@@ -79,15 +92,18 @@ After changing web UI code:
 - Do not open a new browser tab/window when an existing Workbench page is already open.
 - Prefer refreshing the existing page.
 - If automatic refresh is not practical, tell the user to refresh manually.
-- Status/progress messages belong in the fixed bottom status drawer and should remain visible while the page scrolls.
-- The fixed status drawer should visually read as an overlay: semi-transparent/glass-like, with blur and an elevated shadow so users can perceive that page content continues underneath it.
+- Every status message is logged in the "状态 / 提示" panel at the bottom of the right sidebar (newest first, last 80 kept).
+- `notify(message, scope, level)` levels: `quiet` (log only, for routine steps), `progress` (toast that stays until the next toast; long-running work), `important` (toast, auto-hides; completions), `warn` (toast, auto-hides; validation problems such as "请先选择…"), `error` (toast that stays until closed; failures). Toasts sit in the bottom-right corner as a semi-transparent overlay.
 - When a collapsible tool section in the image-editor left sidebar is opened, automatically scroll that sidebar enough to reveal the newly expanded content instead of leaving the expansion below the visible area.
-- The bottom status drawer is collapsed by default. Long-running work (generation / AI edit), important completion notices, validation problems, and errors may open it automatically. Routine informational messages should be logged without forcing it open.
+- The top-right model badge shows the running variant and state (在线 / 加载中 / 切换中 / 启动失败); clicking it opens the model settings dialog. Run buttons are disabled with a tooltip while the model is not ready or another job runs.
+- Static files are served with `Cache-Control: no-cache` so a refresh always pairs the current `index.html` with the current `app.js` / `app.css`. Still bump the `?v=` query when changing them.
+- Layout breakpoints (`app.css`): desktop >1100px fits the viewport with independently scrolling columns; 851–1100px keeps three narrower columns with a scrolling page; <=850px is a single column. The right image library must stay visible at every width.
 
 ## Development workflow
 
 - Keep changes small and test the affected path before moving on.
 - For web changes, at minimum run syntax checks for `app.js` and `server.py`.
+- `app.css` is one consolidated stylesheet organized by component. Edit the existing rule instead of appending a new override block at the end.
 - For model-path changes, also check `/api/status` and a minimal generation/edit smoke test when practical.
 - Do not run expensive model tests merely to exercise unrelated UI changes.
 - When a model test is run, preserve timing/performance logging.

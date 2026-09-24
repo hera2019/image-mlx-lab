@@ -4,13 +4,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Image MLX Lab</title>
 <link rel="icon" type="image/svg+xml" href="assets/image-mlx-lab-icon.svg">
-<link rel="stylesheet" href="app.css?v=21">
+<link rel="stylesheet" href="app.css?v=22">
 </head>
 <body><div class="app">
 <header class="topbar compactTopbar">
   <div class="topbarSpacer"></div>
   <div class="globalBrand"><img class="brandIcon" src="assets/image-mlx-lab-icon.svg" alt=""><div class="globalBrandText"><h1>Image MLX Lab</h1><p>Qwen-Image-2.1 MLX · 本机生成与非破坏式图片编辑</p></div></div>
-  <div class="server"><span id="qwenBadge" class="badge off">Qwen 检查中</span><span id="memBadge" class="badge">内存 —</span><button id="refreshStatus">刷新</button></div>
+  <div class="server"><button id="modelBadge" class="badge off" title="模型设置：选择 4-bit / 8-bit">模型检查中…</button><span id="memBadge" class="badge">内存 —</span><button id="refreshStatus">刷新</button></div>
 </header>
 
 <div class="workspaceTopRow">
@@ -67,7 +67,6 @@
       <div class="two"><label>Steps<input id="stepsInput" type="number" min="1" max="60" value="20"></label><label>Seed<input id="seedInput" type="number" value="42"></label></div>
       <div class="two"><button id="randomSeed">随机 Seed</button><button id="autoFit">重新计算安全尺寸</button></div>
       <button id="runBtn" class="primary big">开始生成</button>
-      <div id="statusText" class="hidden"></div><div id="perfBox" class="hidden"></div>
     </div>
   </section>
 
@@ -75,7 +74,6 @@
     <div class="editorFileHead">
       <label class="filebtn primary">＋ 载入图片<input id="editorUpload" type="file" accept="image/*" multiple></label>
     </div>
-    <div id="editorStatus" class="hidden"></div>
 
     <details open><summary>选区 / Mask</summary><div class="toolBody">
       <div class="toolGrid">
@@ -169,14 +167,13 @@
 </aside>
 </div>
 
-<div id="history" class="hidden"></div><button id="refreshHistory" class="hidden">刷新</button>
 </div>
 
-<dialog id="draftSwitchDialog" class="draftSwitchDialog">
+<dialog id="draftSwitchDialog" class="appDialog">
   <form method="dialog">
     <h3>当前图片有未保存修改</h3>
     <p id="draftSwitchMessage">切换图片前，请选择如何处理当前草稿。</p>
-    <div class="draftSwitchActions">
+    <div class="dialogActions">
       <button value="save-new" class="primary">保存为新图并切换</button>
       <button id="draftOverwriteChoice" value="overwrite">覆盖当前图并切换</button>
       <button value="discard" class="danger">丢弃修改并切换</button>
@@ -185,5 +182,21 @@
   </form>
 </dialog>
 
-<script src="app.js?v=20"></script>
+<dialog id="modelDialog" class="appDialog">
+  <form method="dialog">
+    <h3>模型设置</h3>
+    <p id="modelDialogInfo">正在读取模型状态…</p>
+    <div id="modelChoices" class="modelChoices"></div>
+    <label class="check modelAdvanced"><input id="skipMemPreflight" type="checkbox"><span>跳过内存预检（高级）</span></label>
+    <div class="modelAdvanced"><small>内存预检会在可用内存不足时拒绝加载模型。跳过后可以强行加载，但可能大量使用 swap、变得很慢甚至卡死。</small></div>
+    <div class="dialogActions">
+      <button id="applyModel" value="apply" class="primary">应用并重新加载模型</button>
+      <button value="cancel">取消</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toastHost" class="toastHost" aria-live="polite"></div>
+
+<script src="app.js?v=21"></script>
 </body></html>

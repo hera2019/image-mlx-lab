@@ -2,30 +2,26 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-QWEN="http://127.0.0.1:11234/health"
 WEB="http://127.0.0.1:18080/api/status"
+URL="http://127.0.0.1:18080/web/mask-editor/"
 
-mkdir -p "$HOME/.mlx-serve/logs"
-
-if ! curl -fsS -m 2 "$QWEN" >/dev/null 2>&1; then
-  echo "Starting Image MLX Lab model server..."
-  nohup "$ROOT/scripts/start_server.sh" 8bit force >"$HOME/.mlx-serve/logs/image-mlx-lab-model.log" 2>&1 &
-fi
-
+# The web UI starts the local model server itself, using the 4-bit / 8-bit choice saved from the
+# page (default: chosen by installed models and total memory). The page shows loading progress.
 if ! curl -fsS -m 2 "$WEB" >/dev/null 2>&1; then
-  echo "Starting Image MLX Lab web UI..."
+  echo "Starting Image MLX Lab..."
   cd "$ROOT"
   nohup python3 web/mask-editor/server.py >"$ROOT/web/mask-editor/server.log" 2>&1 &
+  for i in {1..30}; do
+    curl -fsS -m 2 "$WEB" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
 fi
 
-for i in {1..40}; do
-  if curl -fsS -m 2 "$QWEN" >/dev/null 2>&1 && curl -fsS -m 2 "$WEB" >/dev/null 2>&1; then
-    echo "Image MLX Lab is ready."
-    open "http://127.0.0.1:18080/web/mask-editor/"
-    exit 0
-  fi
-  sleep 1
-done
+if curl -fsS -m 2 "$WEB" >/dev/null 2>&1; then
+  echo "Image MLX Lab is ready. 模型在后台加载；页面右上角可查看状态、切换 4-bit / 8-bit。"
+  open "$URL"
+  exit 0
+fi
 
-echo "Services are still starting. Refresh the browser shortly."
+echo "Web UI did not start. See web/mask-editor/server.log"
 read -n 1 -s -r -p "Press any key to close..."

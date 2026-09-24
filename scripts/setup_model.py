@@ -3,6 +3,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ RUNTIME_REVISION = "c7c2cc5b3d160ecac2ad16b00d4feedfc6ce5e93"
 ZIG_VERSION = "0.17.0-dev.2248+3f6a02acd"
 STATE_FILE = ROOT / "results/setup-state.json"
 RUNTIME_PATCH = ROOT / "patches/qwen-image-2.1-true-edit-mlx.patch"
+EDIT_VISION_SCRIPT = ROOT / "scripts/fetch_edit_vision.py"
 
 
 def run(cmd, cwd=None):
@@ -62,6 +64,34 @@ def download_model(spec):
         local_dir=spec["dir"],
     )
     return spec["revision"], Path(path)
+
+
+def edit_vision_ready(spec):
+    return (spec["dir"] / "text_encoder/qwen21_visual.safetensors").is_file()
+
+
+def want_edit_vision(choice):
+    """指令编辑 / AI 局部编辑需要的视觉模块是可选的：参数指定就照做，否则在终端里询问。"""
+    if choice is not None:
+        return choice
+    if not sys.stdin.isatty():
+        print("未指定 --edit-vision / --skip-edit-vision，且不是交互终端：跳过编辑用视觉模块。")
+        return False
+    print("\n编辑用视觉模块（约 1.1 GB）：“指令编辑”和“AI 局部编辑”需要它；")
+    print("只用文生图、图生图和普通图片编辑可以不装，以后随时可以补装。")
+    answer = input("现在下载吗？[y/N] ").strip().lower()
+    return answer in {"y", "yes", "是"}
+
+
+def ensure_edit_vision(spec, choice):
+    if edit_vision_ready(spec):
+        print("编辑用视觉模块已存在。", flush=True)
+        return
+    if want_edit_vision(choice):
+        run([sys.executable, str(EDIT_VISION_SCRIPT), "--model-dir", str(spec["dir"])])
+    else:
+        print("已跳过编辑用视觉模块。以后需要时运行：")
+        print(f"  .venv/bin/python scripts/fetch_edit_vision.py --model-dir {spec['dir']}")
 
 
 def ensure_runtime_patch():
@@ -161,6 +191,15 @@ def main():
         default="qwen-image-2.1-mlx-4bit",
     )
     ap.add_argument("--download-only", action="store_true")
+    vision = ap.add_mutually_exclusive_group()
+    vision.add_argument(
+        "--edit-vision", dest="edit_vision", action="store_const", const=True,
+        help="同时下载编辑用视觉模块（约 1.1 GB；指令编辑 / AI 局部编辑需要）",
+    )
+    vision.add_argument(
+        "--skip-edit-vision", dest="edit_vision", action="store_const", const=False,
+        help="不下载编辑用视觉模块；不指定时会在终端里询问",
+    )
     ap.add_argument(
         "--runtime-only",
         action="store_true",
@@ -176,6 +215,7 @@ def main():
 
     spec = MODELS[args.model]
     model_sha, _ = download_model(spec)
+    ensure_edit_vision(spec, args.edit_vision)
 
     if args.download_only:
         save_state(args.model, spec, model_sha, None, None)
@@ -184,8 +224,7 @@ def main():
     runtime_commit, binary = prepare_runtime()
     save_state(args.model, spec, model_sha, runtime_commit, binary)
     print("\n准备完成。下一步：")
-    print("  ./scripts/start_server.sh 4bit")
-    print("  .venv/bin/python scripts/generate.py --prompt '一只红狐狸站在雪地里'")
+    print("  双击 Start-Image-MLX-Lab.command，或运行 python3 web/mask-editor/server.py")
     return 0
 
 

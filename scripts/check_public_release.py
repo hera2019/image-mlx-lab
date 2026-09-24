@@ -43,9 +43,35 @@ def git_candidates() -> list[Path]:
     except Exception:
         return [p for p in ROOT.rglob("*") if p.is_file()]
 
+def history_paths() -> list[str]:
+    """Every path that ever existed in any commit: publishing the repo publishes its history too."""
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", str(ROOT), "log", "--all", "--pretty=format:", "--name-only"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return sorted({line for line in out.splitlines() if line.strip()})
+    except Exception:
+        return []
+
+def forbidden_reason(rel: Path) -> str | None:
+    if set(rel.parts) & FORBIDDEN_PARTS:
+        return "FORBIDDEN PATH"
+    if rel.suffix.lower() in FORBIDDEN_SUFFIXES or PREVIEW_RE.search(rel.name):
+        return "FORBIDDEN ARTIFACT"
+    if rel.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}:
+        return "REVIEW IMAGE"
+    return None
+
 def main() -> int:
     problems: list[str] = []
     public: list[str] = []
+
+    for name in history_paths():
+        reason = forbidden_reason(Path(name))
+        if reason:
+            problems.append(f"{reason} (in Git history): {name}")
 
     for p in git_candidates():
         try:
