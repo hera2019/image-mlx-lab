@@ -408,7 +408,9 @@ $("resetDraft").onclick=async()=>{if(!editorSource?.url)return;await openEditorA
 $("downloadDraft").onclick=()=>{if(!workCanvas.width)return;const a=document.createElement("a");a.download="draft_"+(editorSource?.name||"image.png");a.href=workCanvas.toDataURL("image/png");a.click()};
 async function materializePendingAdjustments(){
   if(!adjustmentChanged())return;
-  commitWork(buildAdjustedCanvas(),selectionCanvas,"图像调整",false);resetAdjust(false);
+  const adjusted=buildAdjustedCanvas();
+  resetAdjust(false);
+  commitWork(adjusted,selectionCanvas,"图像调整",false);
 }
 async function saveEditorAsNew({quiet=false}={}){
   if(!workCanvas.width){notify("请先选择图片。","editor","warn");return false}
@@ -479,7 +481,12 @@ function buildAdjustedCanvas(){
 }
 ["brightness","contrast","saturation","blur","sharpen"].forEach(id=>$(id).oninput=e=>{$(id+"Val").textContent=e.target.value;clearTimeout(adjustTimer);adjustTimer=setTimeout(renderEditor,50)});
 $("resetAdjust").onclick=()=>resetAdjust();
-$("applyAdjust").onclick=()=>{if(!workCanvas.width||!adjustmentChanged())return;commitWork(buildAdjustedCanvas(),selectionCanvas,"图像调整");resetAdjust(false)};
+$("applyAdjust").onclick=()=>{
+  if(!workCanvas.width||!adjustmentChanged())return;
+  const adjusted=buildAdjustedCanvas();
+  resetAdjust(false);
+  commitWork(adjusted,selectionCanvas,"图像调整");
+};
 function commitWork(newCanvas,newMask=selectionCanvas,label="编辑",announce=true){
   workCanvas.width=newCanvas.width;workCanvas.height=newCanvas.height;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(newCanvas,0,0);
   if(newMask!==selectionCanvas||selectionCanvas.width!==workCanvas.width||selectionCanvas.height!==workCanvas.height){
