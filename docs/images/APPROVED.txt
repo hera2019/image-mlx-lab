@@ -2,4 +2,6 @@
 # One file name per line (files must be directly inside docs/images/).
 # Add a name only after a human has checked the image: no personal photos, no images from
 # results/, no local paths or user names visible, metadata (EXIF / GPS) stripped.
+# Approved image file names are immutable: to revise an image, add a NEW file name rather than
+# replacing an existing one. This prevents an older, unreviewed image remaining public in Git history.
 # scripts/check_public_release.py blocks every image that is not listed here.

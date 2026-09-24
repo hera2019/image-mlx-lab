@@ -15,10 +15,10 @@ STATUS="$(curl -fsS -m 5 "$WEB" 2>/dev/null || true)"
 if [ -n "$STATUS" ]; then
   DISK_VERSION="$(shasum -a 256 "$ROOT/web/mask-editor/server.py" | cut -c1-12)"
   read -r RUNNING_VERSION RUNNING_STATE < <(printf '%s' "$STATUS" | python3 -c 'import sys,json
-d=json.load(sys.stdin); print(d.get("server_version") or "old", "busy" if d.get("busy") else "idle")' 2>/dev/null || echo "unknown idle")
+d=json.load(sys.stdin); phase=(d.get("model") or {}).get("phase"); busy=d.get("busy") or phase=="switching"; print(d.get("server_version") or "old", "busy" if busy else "idle")' 2>/dev/null || echo "unknown idle")
   if [ "$RUNNING_VERSION" != "$DISK_VERSION" ]; then
     if [ "$RUNNING_STATE" = "busy" ]; then
-      echo "检测到新版 server.py，但当前有生成任务在运行；任务完成后再双击启动一次即可更新。"
+      echo "检测到新版 server.py，但当前有生成 / AI 编辑任务或模型切换正在运行；完成后再双击启动一次即可更新。"
     else
       echo "检测到新版 server.py，正在重启 Web 服务（模型保持运行）..."
       pkill -f "web/mask-editor/server.py" 2>/dev/null || true

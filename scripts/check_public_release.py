@@ -108,6 +108,47 @@ def history_text_problems() -> list[str]:
                 problems.add(f"POSSIBLE SECRET (in Git history {commit}): {path}")
     return sorted(problems)
 
+def approved_image_history_problems(approved: set[str]) -> list[str]:
+    """Approved public image names are immutable; replacing one leaves the old blob in Git history."""
+    problems: list[str] = []
+    for name in sorted(approved):
+        if Path(name).name != name:
+            problems.append(f"INVALID APPROVED IMAGE NAME: {name}")
+            continue
+        rel = f"{PUBLIC_IMAGE_DIR}/{name}"
+        current = ROOT / rel
+        if not current.is_file():
+            problems.append(f"APPROVED IMAGE MISSING: {rel}")
+            continue
+        blobs: set[str] = set()
+        try:
+            blobs.add(subprocess.check_output(
+                ["git", "-C", str(ROOT), "hash-object", str(current)],
+                text=True, stderr=subprocess.DEVNULL,
+            ).strip())
+            commits = subprocess.check_output(
+                ["git", "-C", str(ROOT), "rev-list", "--all", "--", rel],
+                text=True, stderr=subprocess.DEVNULL,
+            ).split()
+            for commit in commits:
+                try:
+                    blob = subprocess.check_output(
+                        ["git", "-C", str(ROOT), "rev-parse", f"{commit}:{rel}"],
+                        text=True, stderr=subprocess.DEVNULL,
+                    ).strip()
+                    blobs.add(blob)
+                except subprocess.CalledProcessError:
+                    pass
+        except Exception:
+            problems.append(f"COULD NOT VERIFY PUBLIC IMAGE HISTORY: {rel}")
+            continue
+        if len(blobs) > 1:
+            problems.append(
+                f"PUBLIC IMAGE WAS REPLACED: {rel} has {len(blobs)} versions; "
+                "use a new file name instead of replacing an approved image"
+            )
+    return problems
+
 def main() -> int:
     problems: list[str] = []
     public: list[str] = []
@@ -118,6 +159,7 @@ def main() -> int:
         if reason:
             problems.append(f"{reason} (in Git history): {name}")
     problems.extend(history_text_problems())
+    problems.extend(approved_image_history_problems(approved))
 
     for p in git_candidates():
         try:

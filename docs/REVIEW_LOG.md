@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-09-24 · GPT 复核提交 `059afd0`
+
+Opus 已正确落实上一轮的 stale server 自动重启、模型 loading/switching 防重复切换、多标签页 busy、MIT / NOTICE 分离、历史文本扫描和公开图片白名单。
+
+复核又补了两个边角：
+- 启动器在判断旧 Web Server 是否可安全重启时，同时把 `model.phase == switching` 当成 busy，避免恰好在模型切换线程运行时杀掉 Web Server。
+- 公开演示图文件名改为不可覆盖：release checker 会比较当前文件与 Git 历史 blob；同一个 `docs/images/foo.png` 一旦出现两个版本就直接失败，要求改用新文件名。这样不会因为当前版本已审核，就漏掉历史里的旧图片。
+
+验证：
+- 当前仓库 release check、Python / JS / Shell 语法、`git diff --check` 均通过。
+- 临时 clone 中提交 `demo.png` 后再用同名内容替换，检查器按预期返回失败：`PUBLIC IMAGE WAS REPLACED`。
+- 当前运行中的 `server_version` 与磁盘 `server.py` sha256 前 12 位一致。
+
+---
+
 ## 2026-09-24 · GPT 审查 Opus 5.5 的改动（提交 `3f697d4`、`3bdb3c3`）
 
 GPT 的总体结论：这批修改保留，先补 1～3 三个小问题，再开始做效果图。

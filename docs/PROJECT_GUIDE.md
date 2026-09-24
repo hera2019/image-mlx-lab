@@ -53,7 +53,7 @@ Important subdirectories:
 - Other `results/*` folders are local experiments and must not be published.
 
 Before any public release, run `python3 scripts/check_public_release.py` and review `PUBLIC_RELEASE.md`.
-Public screenshots / demo images go only in `docs/images/` and must be listed in `docs/images/APPROVED.txt`; the release check blocks every other image.
+Public screenshots / demo images go only in `docs/images/` and must be listed in `docs/images/APPROVED.txt`; the release check blocks every other image. Approved public image file names are immutable: revisions use a new file name, never replace an already committed image in place, so no older unreviewed blob remains public in Git history.
 Licensing: `LICENSE` is plain MIT (Houjun Co., Ltd.) for the source code; model-license notes live in `NOTICE` and the README.
 Review feedback and how each point was handled is recorded in `docs/REVIEW_LOG.md`.
 

@@ -15,6 +15,7 @@ Before creating or pushing the public GitHub repository:
 - Never copy anything from `results/`; generate dedicated demo images from neutral prompts instead.
 - No personal photos, user names, local paths, other apps' windows or notifications visible; strip EXIF / GPS metadata.
 - Any image outside `docs/images/`, or not listed in `APPROVED.txt`, fails the release check.
+- Treat approved image file names as immutable. If a screenshot/demo image changes, save it under a new file name and approve that new name; do not replace an already committed public image in place.
 
 ## Before any public release
 1. Run:
