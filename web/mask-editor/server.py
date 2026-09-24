@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, base64, json, os, re, signal, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
+import argparse, base64, hashlib, json, os, re, signal, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -14,6 +14,9 @@ PORT = 18080
 ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 ALLOWED_ORIGINS = {"http://" + h for h in ALLOWED_HOSTS}
 MAX_BODY_BYTES = 256 * 1024 * 1024
+# Fingerprint of the code this process is running. The launcher compares it with server.py on
+# disk and restarts a stale server after an update (the page itself is always read fresh).
+SERVER_VERSION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
 
 QWEN_PORT = 11234
 QWEN_BASE = f"http://127.0.0.1:{QWEN_PORT}"
@@ -370,6 +373,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/status":
             m=MODELS.status()
             return self._json(200,{
+                "server_version":SERVER_VERSION,
                 "qwen_ok":m["phase"]=="ready","model":m,"busy":dict(CURRENT_JOB) or None,
                 "rss_mb":proc_rss_mb(),"swap_mb":swap_used_mb(),
                 "memory_free_pct":memory_free_pct(),"time":now_iso()
@@ -451,6 +455,9 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._json(400,{"error":str(e)})
             running=MODELS.running()
+            phase=MODELS.phase(running)
+            if phase in {"switching","loading"}:
+                return self._json(409,{"error":"模型正在加载，请等它就绪后再切换。"})
             if running and running["variant"]==variant and running["skip_mem_preflight"]==skip:
                 save_settings({**load_settings(),"model_variant":variant,"skip_mem_preflight":skip})
                 return self._json(200,{"switching":False,"model":MODELS.status()})

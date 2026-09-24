@@ -10,13 +10,16 @@ Image MLX Lab 是一个面向 Apple Silicon / MLX 的本地图像生成与编辑
 
 当前主要测试机器：Apple M2 Max，32 GB 统一内存。
 
-## 使用许可与限制
+## 许可证
 
-- 项目代码使用 [MIT 许可证](LICENSE)。
-- 本项目定位为个人实验与学习用途的工具，**不用于商业用途**。
-- 模型权重**不包含在本仓库中**，需要自行下载，并遵守模型自带的 **Qwen Research License Agreement**：研究和评估可用；商业使用需要另行取得 Qwen 的商业许可。
-- 运行时使用 [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve)（MIT / Apache-2.0），本仓库只附带一个补丁，安装时自动应用。
-- 生成和编辑出来的内容由使用者自行负责。
+代码和模型适用不同的许可证：
+
+- **Image MLX Lab 源代码**采用 [MIT License](LICENSE)，© 2026 Houjun Co., Ltd.。
+- **默认使用的 Qwen-Image-2.1 模型**受 [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE) 限制，**仅限非商业的研究和评估用途**；商业使用该模型需要另行取得 Qwen 的许可。模型权重不包含在本仓库中，需要自行下载。
+- 运行时 [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve) 采用 MIT / Apache-2.0，本仓库只附带一个补丁，安装时自动应用。
+- 用模型生成、编辑出来的内容由使用者自行负责，并受模型许可证约束。
+
+详见 [NOTICE](NOTICE)。
 
 ## 需要准备
 

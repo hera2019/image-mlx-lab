@@ -6,7 +6,7 @@ const modelBadge=$("modelBadge"),memBadge=$("memBadge");
 const sizePreset=$("sizePreset"),widthInput=$("widthInput"),heightInput=$("heightInput"),stepsInput=$("stepsInput"),seedInput=$("seedInput"),tokenHint=$("tokenHint");
 
 let mode="generate",variationAsset=null,editAsset=null,editRefQueue=[],assets=[];
-let modelStatus=null,jobRunning=false;
+let modelStatus=null,jobRunning=false,serverBusy=null;
 let editorSource=null,currentViewScale=1,selectionTool="rect",drawing=false,lastPoint=null,shapeStart=null,shapeBase=null;
 let lassoPoints=[],cloneSource=null,repairBase=null,repairOffset=null,repairStrokeMask=null,repairChanged=false,repairLastPoint=null;
 let workHistory=[],workHistoryIndex=-1,savedHistoryIndex=-1,clipboard=null,floating=null,dragStart=null,adjustTimer=null;
@@ -191,12 +191,17 @@ function renderRefQueue(){
 function moveRef(i,d){const j=i+d;if(j<0||j>=editRefQueue.length)return;[editRefQueue[i],editRefQueue[j]]=[editRefQueue[j],editRefQueue[i]];renderRefQueue()}
 
 /* One model job at a time: the server enforces it too, but disabling both run buttons makes it visible. */
+const jobModeLabel={generate:"文生图",variation:"图生图",edit:"指令编辑","mask-edit":"AI 局部编辑"};
 function updateRunButtons(){
-  const ready=modelStatus?.phase==="ready",why=jobRunning?"另一个生成 / AI 编辑任务正在运行":!ready?"模型尚未就绪":"";
+  // serverBusy comes from /api/status, so a job started in another tab or window also counts.
+  const ready=modelStatus?.phase==="ready";
+  const why=jobRunning?"另一个生成 / AI 编辑任务正在运行"
+    :serverBusy?"其他标签页或窗口正在运行"+(jobModeLabel[serverBusy.mode]||"生成")+"任务"
+    :!ready?"模型尚未就绪":"";
   for(const id of ["runBtn","runLocalAi"]){const b=$(id);if(!b.dataset.busy){b.disabled=!!why;b.title=why}}
 }
 function beginJob(btn,text){jobRunning=true;btn.dataset.busy="1";btn.dataset.idleText=btn.textContent;btn.textContent=text;btn.disabled=true;updateRunButtons()}
-function endJob(btn){jobRunning=false;delete btn.dataset.busy;btn.textContent=btn.dataset.idleText||btn.textContent;updateRunButtons()}
+function endJob(btn){jobRunning=false;delete btn.dataset.busy;btn.textContent=btn.dataset.idleText||btn.textContent;refreshStatus()}
 $("runBtn").onclick=async()=>{
   if(jobRunning){notify("另一个生成 / AI 编辑任务正在运行，请等它完成。","gen","warn");return}
   const w=round32(+widthInput.value),h=round32(+heightInput.value),size=w+"x"+h,steps=+stepsInput.value||20,seed=+seedInput.value||42;
@@ -1099,7 +1104,7 @@ function renderModelBadge(){
 async function refreshStatus(){
   try{
     const s=await fetch("/api/status",{cache:"no-store"}).then(r=>r.json());
-    modelStatus=s.model;
+    modelStatus=s.model;serverBusy=s.busy||null;
     memBadge.textContent="Swap "+(s.swap_mb==null?"—":(s.swap_mb/1024).toFixed(1)+" GB")+" · 空闲 "+(s.memory_free_pct??"—")+"%";
     const phase=modelStatus.phase;
     if(phase!==lastPhase){
@@ -1112,11 +1117,12 @@ async function refreshStatus(){
       }
     }
     lastPhase=phase;
-  }catch(e){modelStatus=null;lastPhase=null}
+  }catch(e){modelStatus=null;lastPhase=null;serverBusy=null}
   renderModelBadge();updateRunButtons();
   if($("modelDialog").open)renderModelDialog(false);
   clearTimeout(statusTimer);
-  statusTimer=setTimeout(refreshStatus,["loading","switching"].includes(modelStatus?.phase)?2000:8000);
+  const waiting=["loading","switching"].includes(modelStatus?.phase)||(serverBusy&&!jobRunning);
+  statusTimer=setTimeout(refreshStatus,waiting?2500:8000);
 }
 $("refreshStatus").onclick=refreshStatus;
 
@@ -1125,7 +1131,10 @@ function renderModelDialog(resetInputs=true){
   if(!m){$("modelDialogInfo").textContent="无法连接 Workbench 服务。";box.innerHTML="";$("applyModel").disabled=true;return}
   const now=m.active_variant?variantLabel(m.active_variant)+"（"+(phaseLabel[m.phase]||m.phase)+"）":(phaseLabel[m.phase]||m.phase);
   $("modelDialogInfo").textContent="本机内存 "+(m.ram_gb??"—")+" GB · 推荐 "+variantLabel(m.recommended)+" · 当前 "+now+"。\n切换会卸载当前模型并重新加载，通常需要 1–3 分钟；选择会保存，下次启动沿用。";
-  $("applyModel").disabled=m.phase==="switching"||jobRunning;
+  // Re-applying while a model is still loading would stop and restart it and waste the wait.
+  const blocked=m.phase==="switching"?"正在切换模型":m.phase==="loading"?"模型正在加载，请等它就绪后再切换"
+    :(jobRunning||serverBusy)?"有生成 / AI 编辑任务正在运行":"";
+  $("applyModel").disabled=!!blocked;$("applyModel").title=blocked;
   if(!resetInputs)return; // keep the user's in-progress choice while the status poll re-renders
   box.innerHTML="";
   const current=m.active_variant||m.desired_variant;

@@ -1,0 +1,23 @@
+Image MLX Lab
+Copyright (c) 2026 Houjun Co., Ltd.
+
+The Image MLX Lab source code in this repository is licensed under the MIT License
+(see LICENSE). The MIT License applies to this source code only.
+
+Model weights are NOT included in this repository. They are downloaded separately by
+the user and remain under their own licenses:
+
+- Qwen-Image-2.1 (Qwen/Qwen-Image-2.1, and the quantized MLX packages
+  ddalcu/Qwen-Image-2.1-MLX-Serve-4bit / -8bit derived from it):
+  Qwen Research License Agreement. Non-commercial research and evaluation only;
+  commercial use of the model requires a separate license from Qwen.
+  https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE
+
+Third-party runtime (downloaded and built by scripts/setup_model.py, not included here):
+
+- mlx-serve (https://github.com/ddalcu/mlx-serve), MIT / Apache-2.0, with its own
+  NOTICE for bundled third-party code. This repository only ships a patch file for it:
+  patches/qwen-image-2.1-true-edit-mlx.patch
+
+Images, text and other content generated with the model are the user's responsibility
+and are subject to the model license.

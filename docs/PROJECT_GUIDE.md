@@ -34,9 +34,10 @@ This is the canonical project instruction document for humans and coding agents.
 - `scripts/setup_model.py --runtime-only` pins the expected mlx-serve commit and applies `patches/qwen-image-2.1-true-edit-mlx.patch`.
 - True Edit and AI local edit need `text_encoder/qwen21_visual.safetensors` inside the model folder (the Qwen3-VL visual tower, ~1.1 GB, cut from the official BF16 shard by `scripts/fetch_edit_vision.py`). It is optional per variant: `setup_model.py` asks (or takes `--edit-vision` / `--skip-edit-vision`; non-interactive default is skip), and the server refuses those two modes with a clear message when the running variant lacks it. Never download it without the user's choice.
 - The web server owns the model process. On start it launches `scripts/start_server.sh` with the saved variant unless an `mlx-serve` is already listening (`server.py --no-model` skips this for UI-only work).
-- Model variants: 4-bit and 8-bit. The default is recommended from installed variants and total RAM (8-bit only at >=48 GB). The user can choose the variant and "skip memory preflight" in the UI; the choice is saved in `results/settings.json`. Switching stops the running `mlx-serve` and starts the other variant; it is refused while a model job runs.
+- `/api/status` reports `server_version` (sha256 prefix of the running `server.py`). `Start-Image-MLX-Lab.command` compares it with the file on disk and restarts an outdated web server (the model keeps running); if a job is running it only prints a notice. After changing `server.py`, restart the web server or double-click Start.
+- Model variants: 4-bit and 8-bit. The default is recommended from installed variants and total RAM (8-bit only at >=48 GB). The user can choose the variant and "skip memory preflight" in the UI; the choice is saved in `results/settings.json`. Switching stops the running `mlx-serve` and starts the other variant; it is refused (server 409, UI "apply" disabled) while a model job runs **or while a model is still switching / loading**.
 - Model log: `~/.mlx-serve/logs/image-mlx-lab-model.log`. When a start fails, the UI shows the relevant log lines and explains memory-preflight refusals.
-- Only one model job (generation / variation / True Edit / AI local edit / model switch) runs at a time; the server returns 409 for a second one and 503 while the model is not ready.
+- Only one model job (generation / variation / True Edit / AI local edit / model switch) runs at a time; the server returns 409 for a second one and 503 while the model is not ready. The UI reads `busy` from `/api/status`, so a job started in another tab or window also disables the run buttons.
 - The patch must continue to apply cleanly to the pinned runtime commit.
 
 ## Private local data
@@ -52,6 +53,9 @@ Important subdirectories:
 - Other `results/*` folders are local experiments and must not be published.
 
 Before any public release, run `python3 scripts/check_public_release.py` and review `PUBLIC_RELEASE.md`.
+Public screenshots / demo images go only in `docs/images/` and must be listed in `docs/images/APPROVED.txt`; the release check blocks every other image.
+Licensing: `LICENSE` is plain MIT (Houjun Co., Ltd.) for the source code; model-license notes live in `NOTICE` and the README.
+Review feedback and how each point was handled is recorded in `docs/REVIEW_LOG.md`.
 
 ## UI and editing invariants
 
@@ -108,6 +112,7 @@ After changing web UI code:
 - Do not run expensive model tests merely to exercise unrelated UI changes.
 - When a model test is run, preserve timing/performance logging.
 - Keep the Chinese UI as the current source UI. English UI/documentation is planned later, after the Chinese interaction model stabilizes.
+- When translating, change only user-facing UI text. The Chinese strings in `buildLocalAiPrompt` (app.js), the True Edit reference-role prefixes (`<imageN>仅作为…参考。`) and the transparent-background suffix are **model prompts**, tuned for the model; do not translate or reword them as part of UI localization. `roleLabel()` currently feeds both the reference-role dropdown and that prompt prefix: split it into a UI label and a prompt label before translating the dropdown.
 
 ## Documentation rule
 

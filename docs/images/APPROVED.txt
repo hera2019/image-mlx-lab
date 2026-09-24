@@ -1,0 +1,5 @@
+# Public screenshots / demo images approved for the repository.
+# One file name per line (files must be directly inside docs/images/).
+# Add a name only after a human has checked the image: no personal photos, no images from
+# results/, no local paths or user names visible, metadata (EXIF / GPS) stripped.
+# scripts/check_public_release.py blocks every image that is not listed here.
