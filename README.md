@@ -40,7 +40,7 @@ Image MLX Lab 是一个面向 Apple Silicon / MLX 的本地图像生成与编辑
 ## 需要准备
 
 - Apple Silicon Mac（M1 及以后），建议 32 GB 及以上统一内存。4-bit 加载时约需 14 GB 空闲内存；内存更小的机器需要“跳过内存预检”，会大量使用 swap、明显变慢。
-- 磁盘空间：4-bit 约 10 GB，8-bit 约 18 GB；可选的编辑用视觉模块每个版本再加约 1.1 GB；另需约 2 GB 编译运行时。
+- 磁盘空间：4-bit 约 10 GB，8-bit 约 18 GB；可选的编辑用视觉模块每个版本再加约 1.1 GB；另需约 2 GB 编译运行时。**首次下载模型前安装脚本会要求至少 24 GiB 可用空间**，用于避免下载到一半因空间不足失败。
 - Xcode 26.2+，并安装 Metal Toolchain 组件（`xcrun -sdk macosx metal --version` 报错时运行 `xcodebuild -downloadComponent MetalToolchain`）。
 - Homebrew 的 `cmake`：`brew install cmake`。
 - Python 3.9+（macOS 自带的 `python3` 即可）。

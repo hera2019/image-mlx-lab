@@ -233,6 +233,7 @@ class ModelManager:
             rows=rows if rows is not None else (qwen_model_rows() if qwen_health() else [])
             if rows and all(r.get("state","ready")=="ready" for r in rows): return "ready"
             return "loading"
+        if not self.installed(): return "missing"
         if self.proc and self.proc.poll() is None: return "loading"
         if self.proc or self.error: return "failed"
         return "stopped"
@@ -297,7 +298,7 @@ class ModelManager:
         if self.running(): return
         variant,skip=self.desired()
         if variant not in self.installed():
-            self.error=f"没有找到已下载的模型：{MODEL_ROOT}/{VARIANTS[variant]['id']}"
+            self.error=None
             return
         self.start(variant,skip)
 

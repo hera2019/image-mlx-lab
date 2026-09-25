@@ -1099,13 +1099,13 @@ $("runLocalAi").onclick=async()=>{
 };
 
 /* 服务状态 / 模型 */
-const phaseLabel={ready:"在线",loading:"加载中…",switching:"切换中…",failed:"启动失败",stopped:"未启动"};
+const phaseLabel={ready:"在线",loading:"加载中…",switching:"切换中…",failed:"启动失败",stopped:"未启动",missing:"未安装模型"};
 let statusTimer=null,lastPhase=null;
 function variantLabel(v){return modelStatus?.variants?.[v]?.label||v||"—"}
 function renderModelBadge(){
   const m=modelStatus;
   if(!m){modelBadge.textContent="服务离线";modelBadge.className="badge off";return}
-  modelBadge.textContent="Qwen "+variantLabel(m.active_variant||m.desired_variant)+" · "+(phaseLabel[m.phase]||m.phase);
+  modelBadge.textContent=m.phase==="missing"?"Qwen · 未安装模型":"Qwen "+variantLabel(m.active_variant||m.desired_variant)+" · "+(phaseLabel[m.phase]||m.phase);
   modelBadge.className="badge "+(m.phase==="ready"?"ok":m.phase==="loading"||m.phase==="switching"?"busy":"off");
 }
 async function refreshStatus(){
@@ -1117,7 +1117,9 @@ async function refreshStatus(){
     if(phase!==lastPhase){
       if(phase==="ready"&&lastPhase)notify(variantLabel(modelStatus.active_variant)+" 模型已就绪。","model","important");
       else if(phase==="loading"&&!lastPhase)notify("模型加载中，首次加载通常需要 1–3 分钟。","model","progress");
-      else if(phase==="failed"){
+      else if(phase==="missing"){
+        notify("尚未安装本地 Qwen 模型。点击右上角“未安装模型”可查看 4-bit / 8-bit 的安装命令。","model","important");
+      }else if(phase==="failed"){
         const err=modelStatus.error||"模型进程已退出";
         const hint=err.includes("跳过内存预检")?"":"\n可以点右上角模型状态打开模型设置，换用 4-bit 或勾选“跳过内存预检”后重试。";
         notify("模型启动失败："+err+hint+(modelStatus.log_tail?"\n\n日志：\n"+modelStatus.log_tail:""),"model","error");
@@ -1139,7 +1141,7 @@ function renderModelDialog(resetInputs=true){
   const now=m.active_variant?variantLabel(m.active_variant)+"（"+(phaseLabel[m.phase]||m.phase)+"）":(phaseLabel[m.phase]||m.phase);
   $("modelDialogInfo").textContent="本机内存 "+(m.ram_gb??"—")+" GB · 推荐 "+variantLabel(m.recommended)+" · 当前 "+now+"。\n切换会卸载当前模型并重新加载，通常需要 1–3 分钟；选择会保存，下次启动沿用。";
   // Re-applying while a model is still loading would stop and restart it and waste the wait.
-  const blocked=m.phase==="switching"?"正在切换模型":m.phase==="loading"?"模型正在加载，请等它就绪后再切换"
+  const blocked=!m.installed.length?"尚未安装模型":m.phase==="switching"?"正在切换模型":m.phase==="loading"?"模型正在加载，请等它就绪后再切换"
     :(jobRunning||serverBusy)?"有生成 / AI 编辑任务正在运行":"";
   $("applyModel").disabled=!!blocked;$("applyModel").title=blocked;
   if(!resetInputs)return; // keep the user's in-progress choice while the status poll re-renders
