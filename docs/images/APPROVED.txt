@@ -1,7 +1,14 @@
 # Public screenshots / demo images approved for the repository.
 # One file name per line (files must be directly inside docs/images/).
-# Add a name only after a human has checked the image: no personal photos, no images from
-# results/, no local paths or user names visible, metadata (EXIF / GPS) stripped.
+# Add a name only after a human has checked the image: no personal photos, no private or
+# unreviewed images from results/, no local paths or user names visible, metadata (EXIF / GPS) stripped.
 # Approved image file names are immutable: to revise an image, add a NEW file name rather than
 # replacing an existing one. This prevents an older, unreviewed image remaining public in Git history.
 # scripts/check_public_release.py blocks every image that is not listed here.
+
+showcase-overview-zh-v1.png
+showcase-local-remove-zh-v1.png
+showcase-local-material-zh-v1.png
+showcase-true-edit-color-zh-v1.png
+ui-main-workbench-zh-v1.png
+ui-ai-local-edit-zh-v1.png
