@@ -1,4 +1,5 @@
 const $=id=>document.getElementById(id);
+const {ui,applyStatic:applyStaticI18n,getLanguage}=window.ImageMlxI18n;
 const tabs=[...document.querySelectorAll(".tabs button")];
 const panels={generate:$("panel-generate"),variation:$("panel-variation"),edit:$("panel-edit")};
 const genControls=$("genControls"),editorTools=$("editorTools");
@@ -40,9 +41,14 @@ function imgFromUrl(url){return new Promise((resolve,reject)=>{const im=new Imag
 function assetFromDataUrl(name,dataUrl){return imgFromUrl(dataUrl).then(img=>({name,dataUrl,b64:dataUrlToB64(dataUrl),w:img.naturalWidth,h:img.naturalHeight,img}))}
 function blobToAsset(blob,name){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>assetFromDataUrl(name,r.result).then(resolve,reject);r.onerror=reject;r.readAsDataURL(blob)})}
 async function fileAsset(file){return blobToAsset(file,file.name)}
-async function remoteAsset(url,name="image.png"){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error("图片读取失败");return blobToAsset(await r.blob(),name)}
+async function remoteAsset(url,name="image.png"){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(ui("图片读取失败","Failed to read image"));return blobToAsset(await r.blob(),name)}
 function round32(v){return Math.max(256,Math.min(2048,Math.round(v/32)*32))}
-function roleLabel(v){return({identity:"身份/五官",pose:"姿态",clothes:"服装/配饰",style:"风格",detail:"细节",other:"其他"})[v]||"参考"}
+function rolePromptLabel(v){return({identity:"身份/五官",pose:"姿态",clothes:"服装/配饰",style:"风格",detail:"细节",other:"其他"})[v]||"参考"}
+function roleUiLabel(v){
+  const zh={identity:"身份/五官",pose:"姿态",clothes:"服装/配饰",style:"风格",detail:"细节",other:"其他"};
+  const en={identity:"Identity / Face",pose:"Pose",clothes:"Clothing / Accessories",style:"Style",detail:"Detail",other:"Other"};
+  return ui(zh[v]||"参考",en[v]||"Reference");
+}
 let genPerfText="";
 let noticeLog=[];
 function renderNoticeHistory(){
@@ -61,18 +67,19 @@ function showToast(level,scope,text){
   if(progressToast){progressToast.remove();progressToast=null}
   const t=document.createElement("div");t.className="toast "+level;t.setAttribute("role",level==="error"?"alert":"status");
   const body=document.createElement("div"),head=document.createElement("b");
-  head.textContent=scope+({progress:" · 进行中",warn:" · 提示",error:" · 出错"}[level]||"");
+  const suffix={progress:ui(" · 进行中"," · In progress"),warn:ui(" · 提示"," · Notice"),error:ui(" · 出错"," · Error")}[level]||"";
+  head.textContent=scope+suffix;
   body.append(head,document.createTextNode(text));
-  const close=document.createElement("button");close.type="button";close.textContent="×";close.title="关闭";close.onclick=()=>t.remove();
+  const close=document.createElement("button");close.type="button";close.textContent="×";close.title=ui("关闭","Close");close.onclick=()=>t.remove();
   t.append(body,close);toastHost.prepend(t);
   while(toastHost.children.length>3)toastHost.lastElementChild.remove();
   if(level==="progress")progressToast=t;
   else if(level!=="error")setTimeout(()=>t.remove(),level==="warn"?5000:7000);
 }
 function notify(message,scope=null,attention="quiet"){
-  const kind=scope==="editor"?"编辑":scope==="gen"?"生成":scope==="model"?"模型":(mode==="editor"?"编辑":"生成");
+  const kind=scope==="editor"?ui("编辑","Edit"):scope==="gen"?ui("生成","Generate"):scope==="model"?ui("模型","Model"):(mode==="editor"?ui("编辑","Edit"):ui("生成","Generate"));
   const level=["progress","important","warn","error"].includes(attention)?attention:"quiet";
-  const text=String(message),time=new Date().toLocaleTimeString("zh-CN",{hour12:false});
+  const text=String(message),time=new Date().toLocaleTimeString(getLanguage()==="en"?"en-US":"zh-CN",{hour12:false});
   noticeLog.unshift({time,scope:kind,message:text,level});
   if(noticeLog.length>80)noticeLog.length=80;
   renderNoticeHistory();
@@ -81,7 +88,7 @@ function notify(message,scope=null,attention="quiet"){
 function formatPerf(p){
   if(!p)return "";
   const mb=v=>v==null?"—":Number(v).toFixed(0)+" MB";
-  return "Qwen "+(p.qwen_sec??"—")+" s · 后端 "+(p.backend_total_sec??"—")+" s · "+(p.size??"—")+" · Steps "+(p.steps??"—")+" · Seed "+(p.seed??"—")+" · Swap "+mb(p.swap_before_mb)+" → "+mb(p.swap_after_mb);
+  return "Qwen "+(p.qwen_sec??"—")+" s · "+ui("后端 ","Backend ")+(p.backend_total_sec??"—")+" s · "+(p.size??"—")+" · Steps "+(p.steps??"—")+" · Seed "+(p.seed??"—")+" · Swap "+mb(p.swap_before_mb)+" → "+mb(p.swap_after_mb);
 }
 function cloneCanvas(src){
   const c=document.createElement("canvas");c.width=src.width;c.height=src.height;c.getContext("2d").drawImage(src,0,0);return c;
@@ -109,8 +116,14 @@ function syncCurrentMainToMode(){
     $("editInfo").textContent=current.name+" · "+current.w+"×"+current.h;
   }
 }
+function updateModeTabLabels(){
+  const zh={generate:"文生图",variation:"图生图",edit:"指令编辑",editor:"图片编辑"};
+  const en={generate:"Text→Image",variation:"Variation",edit:"True Edit",editor:"Editor"};
+  tabs.forEach(b=>b.textContent=getLanguage()==="en"?en[b.dataset.mode]:zh[b.dataset.mode]);
+}
 function setMode(next){
   mode=next;
+  updateModeTabLabels();
   tabs.forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
   const editing=mode==="editor";
   genControls.classList.toggle("hidden",editing);
@@ -136,8 +149,9 @@ function autoGenSize(){
 }
 function updateTokenHint(){
   const w=+widthInput.value||1024,h=+heightInput.value||1024,r=genRefCount();
-  if(!r){tokenHint.className="hint safe";tokenHint.textContent="文生图：无参考图视觉 token 限制";return}
-  const t=Math.round((w/32)*(h/32)*r);tokenHint.textContent="视觉 token 估算："+t+" · 条件图 "+r+" 张";
+  if(!r){tokenHint.className="hint safe";tokenHint.textContent=ui("文生图：无参考图视觉 token 限制","Text to Image: no reference-image visual-token limit");return}
+  const t=Math.round((w/32)*(h/32)*r);
+  tokenHint.textContent=ui("视觉 token 估算："+t+" · 条件图 "+r+" 张","Estimated visual tokens: "+t+" · "+r+" reference image"+(r===1?"":"s"));
   tokenHint.className="hint "+(t<=1450?"safe":t<=1850?"warn":"danger");
 }
 sizePreset.onchange=()=>{if(sizePreset.value==="auto")autoGenSize();else if(sizePreset.value!=="custom"){const [w,h]=sizePreset.value.split("x");widthInput.value=w;heightInput.value=h;updateTokenHint()}};
@@ -163,7 +177,7 @@ async function chooseGenOne(input,which){
     else{editAsset=a;$("editInfo").textContent=a.name+" · "+a.w+"×"+a.h}
     if(saved)await requestOpenEditorAsset(saved);
     if(sizePreset.value==="auto")autoGenSize();
-  }catch(e){notify("图片读取失败："+e.message,"gen","error")}
+  }catch(e){notify(ui("图片读取失败：","Failed to read image: ")+e.message,"gen","error")}
 }
 $("variationFile").onchange=e=>chooseGenOne(e.target,"variation");
 $("editFile").onchange=e=>chooseGenOne(e.target,"edit");
@@ -178,9 +192,9 @@ function renderRefQueue(){
     const img=document.createElement("img");img.src=item.asset.dataUrl;
     const main=document.createElement("div"),name=document.createElement("div");name.className="refName";name.textContent=(i+1)+". "+item.asset.name;
     const ctl=document.createElement("div");ctl.className="refControls";
-    const lab=document.createElement("label"),ck=document.createElement("input");ck.type="checkbox";ck.checked=item.active;lab.append(ck,document.createTextNode("启用"));
-    ck.onchange=()=>{if(ck.checked&&activeRefs().length>=3){ck.checked=false;notify("当前最多启用 3 张额外参考图。","gen","warn");return}item.active=ck.checked;autoGenSize()};
-    const sel=document.createElement("select");["identity","pose","clothes","style","detail","other"].forEach(v=>sel.add(new Option(roleLabel(v),v)));sel.value=item.role;sel.onchange=()=>item.role=sel.value;
+    const lab=document.createElement("label"),ck=document.createElement("input");ck.type="checkbox";ck.checked=item.active;lab.append(ck,document.createTextNode(ui("启用","Enable")));
+    ck.onchange=()=>{if(ck.checked&&activeRefs().length>=3){ck.checked=false;notify(ui("当前最多启用 3 张额外参考图。","Up to 3 extra reference images can be active at once."),"gen","warn");return}item.active=ck.checked;autoGenSize()};
+    const sel=document.createElement("select");["identity","pose","clothes","style","detail","other"].forEach(v=>sel.add(new Option(roleUiLabel(v),v)));sel.value=item.role;sel.onchange=()=>item.role=sel.value;
     ctl.append(lab,sel);main.append(name,ctl);
     const act=document.createElement("div");act.className="refActions";
     for(const [txt,d] of [["↑",-1],["↓",1]]){const b=document.createElement("button");b.textContent=txt;b.onclick=()=>moveRef(i,d);act.append(b)}
@@ -191,46 +205,46 @@ function renderRefQueue(){
 function moveRef(i,d){const j=i+d;if(j<0||j>=editRefQueue.length)return;[editRefQueue[i],editRefQueue[j]]=[editRefQueue[j],editRefQueue[i]];renderRefQueue()}
 
 /* One model job at a time: the server enforces it too, but disabling both run buttons makes it visible. */
-const jobModeLabel={generate:"文生图",variation:"图生图",edit:"指令编辑","mask-edit":"AI 局部编辑"};
+function jobModeLabel(v){return({generate:ui("文生图","Text to Image"),variation:ui("图生图","Image to Image"),edit:ui("指令编辑","True Edit"),"mask-edit":ui("AI 局部编辑","AI Local Edit")})[v]||ui("生成","generation")}
 function updateRunButtons(){
   // serverBusy comes from /api/status, so a job started in another tab or window also counts.
   const ready=modelStatus?.phase==="ready";
-  const why=jobRunning?"另一个生成 / AI 编辑任务正在运行"
-    :serverBusy?"其他标签页或窗口正在运行"+(jobModeLabel[serverBusy.mode]||"生成")+"任务"
-    :!ready?"模型尚未就绪":"";
+  const why=jobRunning?ui("另一个生成 / AI 编辑任务正在运行","Another generation / AI edit job is running")
+    :serverBusy?ui("其他标签页或窗口正在运行","Another tab or window is running a ")+jobModeLabel(serverBusy.mode)+ui("任务"," job")
+    :!ready?ui("模型尚未就绪","Model is not ready"):"";
   for(const id of ["runBtn","runLocalAi"]){const b=$(id);if(!b.dataset.busy){b.disabled=!!why;b.title=why}}
 }
 function beginJob(btn,text){jobRunning=true;btn.dataset.busy="1";btn.dataset.idleText=btn.textContent;btn.textContent=text;btn.disabled=true;updateRunButtons()}
 function endJob(btn){jobRunning=false;delete btn.dataset.busy;btn.textContent=btn.dataset.idleText||btn.textContent;refreshStatus()}
 $("runBtn").onclick=async()=>{
-  if(jobRunning){notify("另一个生成 / AI 编辑任务正在运行，请等它完成。","gen","warn");return}
+  if(jobRunning){notify(ui("另一个生成 / AI 编辑任务正在运行，请等它完成。","Another generation / AI edit job is running. Please wait for it to finish."),"gen","warn");return}
   const w=round32(+widthInput.value),h=round32(+heightInput.value),size=w+"x"+h,steps=+stepsInput.value||20,seed=+seedInput.value||42;
   let endpoint,payload;
   if(mode==="generate"){
-    let prompt=$("genPrompt").value.trim();if(!prompt){notify("请输入提示词。","gen","warn");return}if($("transparentBg").checked)prompt+=" 这是RGBA透明图片，背景透明，保留Alpha通道。";
+    let prompt=$("genPrompt").value.trim();if(!prompt){notify(ui("请输入提示词。","Enter a prompt."),"gen","warn");return}if($("transparentBg").checked)prompt+=" 这是RGBA透明图片，背景透明，保留Alpha通道。";
     endpoint="/api/generate";payload={prompt,size,steps,seed};
   }else if(mode==="variation"){
-    if(!variationAsset){notify("请先选择原图。","gen","warn");return}const prompt=$("variationPrompt").value.trim();if(!prompt){notify("请输入目标描述。","gen","warn");return}
+    if(!variationAsset){notify(ui("请先选择原图。","Choose a source image first."),"gen","warn");return}const prompt=$("variationPrompt").value.trim();if(!prompt){notify(ui("请输入目标描述。","Enter a target description."),"gen","warn");return}
     endpoint="/api/variation";payload={prompt,size,steps,seed,image_b64:variationAsset.b64,strength:+$("strength").value,source_size:variationAsset.w+"x"+variationAsset.h};
   }else{
-    if(!editAsset){notify("请先选择主图。","gen","warn");return}let prompt=$("editPrompt").value.trim();if(!prompt){notify("请输入编辑指令。","gen","warn");return}
-    const refs=activeRefs();prompt=refs.map((r,i)=>"<image"+(i+2)+">仅作为"+roleLabel(r.role)+"参考。").join("")+prompt;
+    if(!editAsset){notify(ui("请先选择主图。","Choose a main image first."),"gen","warn");return}let prompt=$("editPrompt").value.trim();if(!prompt){notify(ui("请输入编辑指令。","Enter an edit instruction."),"gen","warn");return}
+    const refs=activeRefs();prompt=refs.map((r,i)=>"<image"+(i+2)+">仅作为"+rolePromptLabel(r.role)+"参考。").join("")+prompt;
     endpoint="/api/edit";payload={prompt,size,steps,seed,image_b64:editAsset.b64,ref_images_b64:refs.map(x=>x.asset.b64),source_size:editAsset.w+"x"+editAsset.h};
   }
-  notify("生成中… "+size+" · Steps "+steps,"gen","progress");beginJob($("runBtn"),"生成中…");
+  notify(ui("生成中… ","Generating… ")+size+" · Steps "+steps,"gen","progress");beginJob($("runBtn"),ui("生成中…","Generating…"));
   try{
     const t0=performance.now(),r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),j=await r.json();
-    if(!r.ok)throw new Error(j.error||"生成失败");
+    if(!r.ok)throw new Error(j.error||ui("生成失败","Generation failed"));
     genPerfText=formatPerf(j.perf);
     await refreshAssets();
     const waited=((performance.now()-t0)/1000).toFixed(2);
     // Goes through the unsaved-draft check: a finished generation must never silently replace an edited draft.
     const item=assets.find(a=>a.url===j.output_url)||{url:j.output_url,name:j.output_url.split("/").pop(),kind:"generated"};
     const shown=await requestOpenEditorAsset(item);
-    notify("生成完成 · 浏览器总等待 "+waited+" s\n"+genPerfText+
-      (shown?"\n新图已显示在中间主窗口，并加入右侧图片库；原图/上一代仍保留在右侧。"
-            :"\n新图已加入右侧图片库；当前草稿保持不变，需要时在右侧点击新图查看。"),"gen","important");
-  }catch(e){notify("生成失败："+e.message,"gen","error")}finally{endJob($("runBtn"))}
+    notify(ui("生成完成 · 浏览器总等待 ","Generation complete · browser wait ")+waited+" s\n"+genPerfText+
+      (shown?ui("\n新图已显示在中间主窗口，并加入右侧图片库；原图/上一代仍保留在右侧。","\nThe new image is shown in the center and added to the library; the source / previous generation remains on the right.")
+            :ui("\n新图已加入右侧图片库；当前草稿保持不变，需要时在右侧点击新图查看。","\nThe new image was added to the library; the current draft was left unchanged. Click the new image on the right to view it.")),"gen","important");
+  }catch(e){notify(ui("生成失败：","Generation failed: ")+e.message,"gen","error")}finally{endJob($("runBtn"))}
 };
 
 /* ---------- 图片库 ---------- */
@@ -240,26 +254,26 @@ async function refreshAssets(){
 function renderAssets(){
   const box=$("assetGallery"),filter=$("assetFilter").value;box.innerHTML="";
   const list=assets.filter(a=>filter==="all"||(filter==="final"&&a.kind!=="intermediate")||a.kind===filter);
-  if(!list.length){box.innerHTML="<div class='fileInfo'>暂无图片</div>";return}
+  if(!list.length){box.innerHTML="<div class='fileInfo'>"+escapeHtml(ui("暂无图片","No images yet"))+"</div>";return}
   list.forEach(a=>{
     const card=document.createElement("div");card.className="assetCard"+(editorSource?.url===a.url?" active":"");
     const img=document.createElement("img");img.src=a.url+(a.mtime?("?v="+Math.round(a.mtime*1000)):"");img.loading="lazy";
     const meta=document.createElement("div");meta.className="assetMeta";meta.innerHTML="<b>"+escapeHtml(a.name)+"</b>"+kindLabel(a.kind)+" · "+formatBytes(a.bytes);
     const ops=document.createElement("div");ops.className="assetOps";
-    const dl=document.createElement("a");dl.href=a.url;dl.download=a.name;dl.textContent="下载";dl.onclick=e=>e.stopPropagation();
-    const del=document.createElement("button");del.className="danger";del.textContent="删除";del.onclick=e=>{e.stopPropagation();deleteAsset(a)};
+    const dl=document.createElement("a");dl.href=a.url;dl.download=a.name;dl.textContent=ui("下载","Download");dl.onclick=e=>e.stopPropagation();
+    const del=document.createElement("button");del.className="danger";del.textContent=ui("删除","Delete");del.onclick=e=>{e.stopPropagation();deleteAsset(a)};
     ops.append(dl,del);card.append(img,meta,ops);card.onclick=()=>requestOpenEditorAsset(a);box.append(card);
   });
 }
-function kindLabel(k){return k==="loaded"?"载入":k==="edited"?"编辑":k==="intermediate"?"中间/原始AI":"生成"}
+function kindLabel(k){return k==="loaded"?ui("载入","Loaded"):k==="edited"?ui("编辑","Edited"):k==="intermediate"?ui("中间/原始AI","Intermediate / raw AI"):ui("生成","Generated")}
 function formatBytes(n){if(!n)return "—";return n>1048576?(n/1048576).toFixed(1)+"MB":Math.round(n/1024)+"KB"}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
 $("assetFilter").onchange=renderAssets;$("refreshAssets").onclick=refreshAssets;
 async function deleteAsset(a){
-  if(!confirm("删除这张图片？\n"+a.name))return;
+  if(!confirm(ui("删除这张图片？\n","Delete this image?\n")+a.name))return;
   const r=await fetch("/api/delete-asset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:a.url})}),j=await r.json();
-  if(!r.ok){notify(j.error||"删除失败","editor","error");return}
-  if(editorSource?.url===a.url){editorSource={...editorSource,url:null};notify("原图片已删除；当前草稿仍可继续编辑或保存为新图片。","editor","important")}
+  if(!r.ok){notify(j.error||ui("删除失败","Delete failed"),"editor","error");return}
+  if(editorSource?.url===a.url){editorSource={...editorSource,url:null};notify(ui("原图片已删除；当前草稿仍可继续编辑或保存为新图片。","The source image was deleted; the current draft can still be edited or saved as a new image."),"editor","important")}
   await refreshAssets();
 }
 async function saveTempAsset(a,name){
@@ -286,7 +300,7 @@ function updateDirtyUI(){
 function askDraftSwitch(target){
   const dialog=$("draftSwitchDialog"),overwrite=$("draftOverwriteChoice");
   overwrite.disabled=!canOverwriteCurrent();
-  $("draftSwitchMessage").textContent="“"+(editorSource?.name||"当前图片")+"”有未保存修改。切换到“"+target.name+"”前，请选择如何处理。";
+  $("draftSwitchMessage").textContent=ui("“"+(editorSource?.name||"当前图片")+"”有未保存修改。切换到“"+target.name+"”前，请选择如何处理。","“"+(editorSource?.name||"Current image")+"” has unsaved changes. Choose what to do before switching to “"+target.name+"”.");
   return new Promise(resolve=>{
     const done=()=>{dialog.removeEventListener("close",done);resolve(dialog.returnValue||"cancel")};
     // Reset first: Esc closes without touching returnValue, so a stale "discard" would otherwise be reused.
@@ -295,7 +309,7 @@ function askDraftSwitch(target){
 }
 async function requestOpenEditorAsset(item){
   if(editorSource?.url&&item.url===editorSource.url)return true;
-  if(floating){notify("当前还有 Paste 预览，请先确定或取消 Paste，再切换图片。","editor","warn");return false}
+  if(floating){notify(ui("当前还有 Paste 预览，请先确定或取消 Paste，再切换图片。","A Paste preview is still active. Apply or cancel it before switching images."),"editor","warn");return false}
   if(isEditorDirty()||adjustmentChanged()){
     const action=await askDraftSwitch(item);
     if(action==="cancel"||!action)return false;
@@ -310,12 +324,12 @@ async function openEditorAsset(item){
     editorSource={...item,...a,url:item.url,kind:item.kind||"generated"};
     workCanvas.width=a.w;workCanvas.height=a.h;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(a.img,0,0);
     resetSelection();floating=null;cloneSource=null;repairBase=null;repairOffset=null;repairStrokeMask=null;lassoPoints=[];clipboardControls();resetAdjust(false);resetWorkHistory();syncEditorSizeInputs();
-    if($("cloneInfo"))$("cloneInfo").textContent="克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。";
+    if($("cloneInfo"))$("cloneInfo").textContent=ui("克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。","Clone Stamp: hold ⌥ Option / Alt and click to set a source point, then paint over the target area.");
     syncCurrentMainToMode();
     $("editorTitle").textContent=item.name;
-    notify("当前主图："+item.name+"\n顶部模式未改变；右侧可继续切换其他图片比较。",mode==="editor"?"editor":"gen",false);
+    notify(ui("当前主图：","Current main image: ")+item.name+ui("\n顶部模式未改变；右侧可继续切换其他图片比较。","\nThe top mode did not change; use the right library to compare other images."),mode==="editor"?"editor":"gen",false);
     renderEditor();renderAssets();
-  }catch(e){notify("无法打开图片："+e.message,mode==="editor"?"editor":"gen","error")}
+  }catch(e){notify(ui("无法打开图片：","Unable to open image: ")+e.message,mode==="editor"?"editor":"gen","error")}
 }
 function resetSelection(){
   selectionCanvas.width=workCanvas.width;selectionCanvas.height=workCanvas.height;selCtx.clearRect(0,0,selectionCanvas.width,selectionCanvas.height);updateMaskInfo();
@@ -366,7 +380,7 @@ function binaryDistanceField(binary,w,h,featureValue){
   return dist;
 }
 function morphSelection(expand){
-  if(!selectionCanvas.width||selectionCoverage()<=0){notify("请先建立选区。","editor","warn");return}
+  if(!selectionCanvas.width||selectionCoverage()<=0){notify(ui("请先建立选区。","Create a selection first."),"editor","warn");return}
   const r=Math.max(1,Math.min(64,Math.round(+$("selectionMorphPx").value||1))),w=selectionCanvas.width,h=selectionCanvas.height,n=w*h;
   const im=selCtx.getImageData(0,0,w,h),binary=new Uint8Array(n);
   for(let i=0;i<n;i++)binary[i]=im.data[i*4+3]>8?1:0;
@@ -382,9 +396,9 @@ function morphSelection(expand){
     if(on){out.data[i]=out.data[i+1]=out.data[i+2]=255;out.data[i+3]=255}
   }
   selCtx.putImageData(out,0,0);renderOverlay();updateMaskInfo();
-  notify("选区已"+(expand?"扩展 ":"收缩 ")+r+" px。","editor");
+  notify(ui("选区已","Selection ")+(expand?ui("扩展 ","expanded by "):ui("收缩 ","contracted by "))+r+" px.","editor");
 }
-function updateMaskInfo(){$("maskCoverage").textContent="选区 "+(selectionCoverage()*100).toFixed(1)+"%"}
+function updateMaskInfo(){$("maskCoverage").textContent=ui("选区 ","Selection ")+(selectionCoverage()*100).toFixed(1)+"%"}
 function resetWorkHistory(){workHistory=[snapshotWork()];workHistoryIndex=0;savedHistoryIndex=0;updateUndo()}
 function snapshotWork(){return{image:cloneCanvas(workCanvas),mask:cloneCanvas(selectionCanvas)}}
 function pushWorkHistory(){
@@ -410,34 +424,34 @@ async function materializePendingAdjustments(){
   if(!adjustmentChanged())return;
   const adjusted=buildAdjustedCanvas();
   resetAdjust(false);
-  commitWork(adjusted,selectionCanvas,"图像调整",false);
+  commitWork(adjusted,selectionCanvas,ui("图像调整","Image adjustment"),false);
 }
 async function saveEditorAsNew({quiet=false}={}){
-  if(!workCanvas.width){notify("请先选择图片。","editor","warn");return false}
-  if(floating){notify("请先确定或取消当前 Paste。","editor","warn");return false}
+  if(!workCanvas.width){notify(ui("请先选择图片。","Choose an image first."),"editor","warn");return false}
+  if(floating){notify(ui("请先确定或取消当前 Paste。","Apply or cancel the current Paste first."),"editor","warn");return false}
   await materializePendingAdjustments();
   const name=(editorSource?.name||"image").replace(/\.[^.]+$/,"")+"_edit";
   const r=await fetch("/api/save-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_b64:dataUrlToB64(workCanvas.toDataURL("image/png")),name,source_url:editorSource?.url,edit_kind:"manual"})}),j=await r.json();
-  if(!r.ok){notify(j.error||"保存失败","editor","error");return false}
+  if(!r.ok){notify(j.error||ui("保存失败","Save failed"),"editor","error");return false}
   await refreshAssets();
   const saved=assets.find(a=>a.url===j.url)||{url:j.url,name:j.name,kind:j.kind};
   editorSource={...editorSource,...saved,url:j.url,name:j.name,kind:j.kind};
   savedHistoryIndex=workHistoryIndex;updateUndo();$("editorTitle").textContent=j.name;renderAssets();renderEditor();
-  if(!quiet)notify("已保存为新图片 · 原图保留；当前编辑对象已切换到新图。","editor","important");
+  if(!quiet)notify(ui("已保存为新图片 · 原图保留；当前编辑对象已切换到新图。","Saved as a new image · the original is preserved; editing has switched to the new image."),"editor","important");
   return true;
 }
 async function overwriteCurrentEditor({confirmed=false,quiet=false}={}){
-  if(!workCanvas.width){notify("请先选择图片。","editor","warn");return false}
-  if(floating){notify("请先确定或取消当前 Paste。","editor","warn");return false}
-  if(!canOverwriteCurrent()){notify("当前图片不是 Workbench 管理的本地图片，不能覆盖；请使用“保存为新图”。","editor","warn");return false}
-  if(!confirmed&&!confirm("覆盖当前图片？\n\n"+editorSource.name+"\n\n这个操作会替换图片库中的当前文件。"))return false;
+  if(!workCanvas.width){notify(ui("请先选择图片。","Choose an image first."),"editor","warn");return false}
+  if(floating){notify(ui("请先确定或取消当前 Paste。","Apply or cancel the current Paste first."),"editor","warn");return false}
+  if(!canOverwriteCurrent()){notify(ui("当前图片不是 Workbench 管理的本地图片，不能覆盖；请使用“保存为新图”。","The current image is not a Workbench-managed local image and cannot be overwritten; use Save as New."),"editor","warn");return false}
+  if(!confirmed&&!confirm(ui("覆盖当前图片？\n\n","Overwrite current image?\n\n")+editorSource.name+ui("\n\n这个操作会替换图片库中的当前文件。","\n\nThis will replace the current file in the image library.")))return false;
   await materializePendingAdjustments();
   const r=await fetch("/api/overwrite-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_b64:dataUrlToB64(workCanvas.toDataURL("image/png")),source_url:editorSource.url})}),j=await r.json();
-  if(!r.ok){notify(j.error||"覆盖保存失败","editor","error");return false}
+  if(!r.ok){notify(j.error||ui("覆盖保存失败","Overwrite failed"),"editor","error");return false}
   await refreshAssets();
   const latest=assets.find(a=>a.url===editorSource.url);if(latest)editorSource={...editorSource,...latest};
   savedHistoryIndex=workHistoryIndex;updateUndo();renderAssets();renderEditor();
-  if(!quiet)notify("已覆盖保存当前图片："+editorSource.name,"editor","important");
+  if(!quiet)notify(ui("已覆盖保存当前图片：","Overwrote current image: ")+editorSource.name,"editor","important");
   return true;
 }
 $("saveEditor").onclick=()=>saveEditorAsNew();
@@ -485,15 +499,15 @@ $("applyAdjust").onclick=()=>{
   if(!workCanvas.width||!adjustmentChanged())return;
   const adjusted=buildAdjustedCanvas();
   resetAdjust(false);
-  commitWork(adjusted,selectionCanvas,"图像调整");
+  commitWork(adjusted,selectionCanvas,ui("图像调整","Image adjustment"));
 };
-function commitWork(newCanvas,newMask=selectionCanvas,label="编辑",announce=true){
+function commitWork(newCanvas,newMask=selectionCanvas,label=ui("编辑","Edit"),announce=true){
   workCanvas.width=newCanvas.width;workCanvas.height=newCanvas.height;workCtx.clearRect(0,0,workCanvas.width,workCanvas.height);workCtx.drawImage(newCanvas,0,0);
   if(newMask!==selectionCanvas||selectionCanvas.width!==workCanvas.width||selectionCanvas.height!==workCanvas.height){
     const tmp=document.createElement("canvas");tmp.width=workCanvas.width;tmp.height=workCanvas.height;tmp.getContext("2d").drawImage(newMask,0,0,workCanvas.width,workCanvas.height);
     selectionCanvas.width=workCanvas.width;selectionCanvas.height=workCanvas.height;selCtx.clearRect(0,0,workCanvas.width,workCanvas.height);selCtx.drawImage(tmp,0,0);
   }
-  syncEditorSizeInputs();pushWorkHistory();renderEditor();if(announce)notify(label+"完成 · 尚未保存。","editor");
+  syncEditorSizeInputs();pushWorkHistory();renderEditor();if(announce)notify(label+ui("完成 · 尚未保存。"," complete · not saved yet."),"editor");
 }
 
 /* 修复 / 仿制 */
@@ -544,7 +558,7 @@ function healMaskedArea(maskCanvas){
   const pad=Math.max(8,Math.ceil(repairBrushSize()*1.4));
   const x0=Math.max(0,bbox.x-pad),y0=Math.max(0,bbox.y-pad),x1=Math.min(workCanvas.width,bbox.x+bbox.w+pad),y1=Math.min(workCanvas.height,bbox.y+bbox.h+pad);
   const w=x1-x0,h=y1-y0,n=w*h;
-  if(n>350000){notify("修复区域太大。修复画笔适合小污点/划痕；大区域请用克隆图章或 AI 局部编辑。","editor","warn");return false}
+  if(n>350000){notify(ui("修复区域太大。修复画笔适合小污点/划痕；大区域请用克隆图章或 AI 局部编辑。","The repair area is too large. Healing Brush is for small spots / scratches; use Clone Stamp or AI Local Edit for larger areas."),"editor","warn");return false}
   const src=workCtx.getImageData(x0,y0,w,h),mask=maskCanvas.getContext("2d",{willReadFrequently:true}).getImageData(x0,y0,w,h);
   const hole=new Uint8Array(n);let holeCount=0;
   for(let i=0;i<n;i++){if(mask.data[i*4+3]>8){hole[i]=1;holeCount++}}
@@ -588,21 +602,21 @@ function healMaskedArea(maskCanvas){
 }
 function finishRepairStroke(){
   if(selectionTool==="clone"){
-    if(repairChanged){pushWorkHistory();notify("克隆图章完成 · 尚未保存。","editor")}
+    if(repairChanged){pushWorkHistory();notify(ui("克隆图章完成 · 尚未保存。","Clone Stamp complete · not saved yet."),"editor")}
   }else if(selectionTool==="heal"&&repairStrokeMask){
-    notify("修复画笔处理中…","editor","progress");
-    if(healMaskedArea(repairStrokeMask)){pushWorkHistory();notify("修复画笔完成 · 尚未保存。","editor","important")}
+    notify(ui("修复画笔处理中…","Healing Brush processing…"),"editor","progress");
+    if(healMaskedArea(repairStrokeMask)){pushWorkHistory();notify(ui("修复画笔完成 · 尚未保存。","Healing Brush complete · not saved yet."),"editor","important")}
   }
   repairBase=null;repairOffset=null;repairStrokeMask=null;repairChanged=false;repairLastPoint=null;renderEditor();
 }
 function clearCloneSource(){
-  cloneSource=null;$("cloneInfo").textContent="克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。";renderOverlay();
+  cloneSource=null;$("cloneInfo").textContent=ui("克隆图章：⌥ Option / Alt + 点击设置取样点，然后在目标区域涂抹。","Clone Stamp: hold ⌥ Option / Alt and click to set a source point, then paint over the target area.");renderOverlay();
 }
 $("repairBrush").oninput=e=>$("repairBrushVal").textContent=e.target.value;
 $("clearCloneSource").onclick=clearCloneSource;
 
 /* 浏览 */
-const zoomSelect=$("viewZoom");zoomSelect.add(new Option("自定义","custom"));
+const zoomSelect=$("viewZoom");zoomSelect.add(new Option(ui("自定义","Custom"),"custom"));
 function viewportGeometry(scale=currentViewScale){
   const cs=getComputedStyle(editorViewport);
   const pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0;
@@ -649,7 +663,7 @@ function renderEditor(){
   overlayCanvas.style.pointerEvents=mode==="editor"?"auto":"none";
   overlayCanvas.style.cursor=mode==="editor"?"crosshair":"default";
   displayCtx.clearRect(0,0,sourceCanvas.width,sourceCanvas.height);displayCtx.drawImage(adjustmentChanged()?buildAdjustedCanvas():workCanvas,0,0);
-  renderOverlay();applyViewZoom();$("editorMeta").textContent=workCanvas.width+"×"+workCanvas.height+" · "+(editorSource?.kind?kindLabel(editorSource.kind):"草稿")+(isEditorDirty()?" · 未保存":" · 已保存");updateMaskInfo();updateDirtyUI();
+  renderOverlay();applyViewZoom();$("editorMeta").textContent=workCanvas.width+"×"+workCanvas.height+" · "+(editorSource?.kind?kindLabel(editorSource.kind):ui("草稿","Draft"))+(isEditorDirty()?ui(" · 未保存"," · Unsaved"):ui(" · 已保存"," · Saved"));updateMaskInfo();updateDirtyUI();
 }
 let antsPhase=0;
 function renderOverlay(){
@@ -725,15 +739,15 @@ overlayCanvas.onpointerdown=e=>{
     drawing=true;overlayCanvas.setPointerCapture(e.pointerId);lassoPoints=[p];renderOverlay();return;
   }
   if(selectionTool==="clone"){
-    if(adjustmentChanged()){notify("请先应用或重置当前亮度/色彩预览，再使用克隆图章。","editor","warn");return}
+    if(adjustmentChanged()){notify(ui("请先应用或重置当前亮度/色彩预览，再使用克隆图章。","Apply or reset the current brightness / color preview before using Clone Stamp."),"editor","warn");return}
     if(e.altKey){
-      cloneSource={x:p.x,y:p.y};$("cloneInfo").textContent="取样点："+Math.round(p.x)+", "+Math.round(p.y)+"。现在直接涂抹目标区域。";renderOverlay();return;
+      cloneSource={x:p.x,y:p.y};$("cloneInfo").textContent=ui("取样点：","Source: ")+Math.round(p.x)+", "+Math.round(p.y)+ui("。现在直接涂抹目标区域。",". Paint over the target area now.");renderOverlay();return;
     }
-    if(!cloneSource){notify("克隆图章：请先按住 ⌥ Option / Alt 点击图片设置取样点。","editor","warn");return}
+    if(!cloneSource){notify(ui("克隆图章：请先按住 ⌥ Option / Alt 点击图片设置取样点。","Clone Stamp: hold ⌥ Option / Alt and click the image to set a source point first."),"editor","warn");return}
     drawing=true;overlayCanvas.setPointerCapture(e.pointerId);repairBase=cloneCanvas(workCanvas);repairOffset={x:cloneSource.x-p.x,y:cloneSource.y-p.y};repairChanged=false;repairLastPoint=p;cloneStampSegment(p,p);return;
   }
   if(selectionTool==="heal"){
-    if(adjustmentChanged()){notify("请先应用或重置当前亮度/色彩预览，再使用修复画笔。","editor","warn");return}
+    if(adjustmentChanged()){notify(ui("请先应用或重置当前亮度/色彩预览，再使用修复画笔。","Apply or reset the current brightness / color preview before using Healing Brush."),"editor","warn");return}
     drawing=true;overlayCanvas.setPointerCapture(e.pointerId);repairStrokeMask=newRepairMask();repairLastPoint=p;drawRepairMaskStroke(p,p);return;
   }
   drawing=true;overlayCanvas.setPointerCapture(e.pointerId);lastPoint=p;
@@ -773,17 +787,17 @@ $("invertMask").onclick=()=>{if(!selectionCanvas.width)return;const im=selCtx.ge
 
 /* Copy / Cut / Paste 跨图片剪贴板 */
 function copySelectionToClipboard(cut=false){
-  const b=selectionBBox();if(!b){notify("请先选择区域。","editor","warn");return}
+  const b=selectionBBox();if(!b){notify(ui("请先选择区域。","Select an area first."),"editor","warn");return}
   const c=document.createElement("canvas");c.width=b.w;c.height=b.h;const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(workCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
   const mask=document.createElement("canvas");mask.width=b.w;mask.height=b.h;mask.getContext("2d").drawImage(selectionCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);x.globalCompositeOperation="destination-in";x.drawImage(mask,0,0);x.globalCompositeOperation="source-over";
   clipboard={canvas:c,mask,w:b.w,h:b.h,sourceName:editorSource?.name||"image",originX:b.x,originY:b.y};clipboardControls();
-  if(cut){workCtx.save();workCtx.globalCompositeOperation="destination-out";workCtx.drawImage(selectionCanvas,0,0);workCtx.restore();pushWorkHistory();renderEditor();notify("Cut 完成 · 只修改当前草稿，原图仍保留。","editor")}
+  if(cut){workCtx.save();workCtx.globalCompositeOperation="destination-out";workCtx.drawImage(selectionCanvas,0,0);workCtx.restore();pushWorkHistory();renderEditor();notify(ui("Cut 完成 · 只修改当前草稿，原图仍保留。","Cut complete · only the current draft changed; the original is preserved."),"editor")}
 }
 $("copySelection").onclick=()=>copySelectionToClipboard(false);$("cutSelection").onclick=()=>copySelectionToClipboard(true);
-function clipboardControls(){$("clipboardInfo").textContent=clipboard?("剪贴板："+clipboard.w+"×"+clipboard.h+" · "+clipboard.sourceName):"剪贴板为空";$("pasteClipboard").disabled=!clipboard}
+function clipboardControls(){$("clipboardInfo").textContent=clipboard?(ui("剪贴板：","Clipboard: ")+clipboard.w+"×"+clipboard.h+" · "+clipboard.sourceName):ui("剪贴板为空","Clipboard is empty");$("pasteClipboard").disabled=!clipboard}
 function startPaste(){
   if(!clipboard||!workCanvas.width)return;floating={canvas:clipboard.canvas,mask:clipboard.mask,w:clipboard.w,h:clipboard.h,x:Math.max(0,(workCanvas.width-clipboard.w)/2),y:Math.max(0,(workCanvas.height-clipboard.h)/2),aspect:clipboard.w/clipboard.h,opacity:1};
-  $("pasteW").value=Math.round(floating.w);$("pasteH").value=Math.round(floating.h);$("pasteOpacity").value=100;$("pasteOpacityVal").textContent=100;$("pasteControls").classList.remove("hidden");renderOverlay();notify("Paste 预览 · 拖动位置、调整宽高或透明度；确定前不会写入草稿。","editor");
+  $("pasteW").value=Math.round(floating.w);$("pasteH").value=Math.round(floating.h);$("pasteOpacity").value=100;$("pasteOpacityVal").textContent=100;$("pasteControls").classList.remove("hidden");renderOverlay();notify(ui("Paste 预览 · 拖动位置、调整宽高或透明度；确定前不会写入草稿。","Paste preview · drag to reposition or adjust size / opacity; nothing is written to the draft until applied."),"editor");
 }
 $("pasteClipboard").onclick=startPaste;
 $("pasteW").oninput=()=>{if(!floating)return;let w=Math.max(1,+$("pasteW").value||1);floating.w=w;if($("pasteLockAspect").checked){floating.h=Math.max(1,Math.round(w/floating.aspect));$("pasteH").value=Math.round(floating.h)}renderOverlay()};
@@ -797,18 +811,18 @@ $("applyPaste").onclick=()=>{
   if(f.mask)selCtx.drawImage(f.mask,f.x,f.y,f.w,f.h);
   else{selCtx.fillStyle="#fff";selCtx.fillRect(f.x,f.y,f.w,f.h)}
   floating=null;$("pasteControls").classList.add("hidden");pushWorkHistory();renderEditor();updateMaskInfo();
-  notify("Paste 已写入草稿；选区已跟随粘贴内容，可继续处理。","editor");
+  notify(ui("Paste 已写入草稿；选区已跟随粘贴内容，可继续处理。","Paste was written to the draft; the selection now follows the pasted content for further editing."),"editor");
 };
 $("cancelPaste").onclick=()=>{floating=null;$("pasteControls").classList.add("hidden");renderOverlay()};
 
 /* 几何 */
 $("resizeW").oninput=()=>{if(workCanvas.width&&$("lockAspect").checked)$("resizeH").value=Math.max(1,Math.round(+$("resizeW").value*workCanvas.height/workCanvas.width))};
 $("resizeH").oninput=()=>{if(workCanvas.height&&$("lockAspect").checked)$("resizeW").value=Math.max(1,Math.round(+$("resizeH").value*workCanvas.width/workCanvas.height))};
-$("applyResize").onclick=()=>{if(!workCanvas.width)return;const w=Math.max(1,+$("resizeW").value|0),h=Math.max(1,+$("resizeH").value|0),c=document.createElement("canvas"),m=document.createElement("canvas");c.width=w;c.height=h;m.width=w;m.height=h;c.getContext("2d").drawImage(workCanvas,0,0,w,h);m.getContext("2d").drawImage(selectionCanvas,0,0,w,h);commitWork(c,m,"实际像素缩放")};
+$("applyResize").onclick=()=>{if(!workCanvas.width)return;const w=Math.max(1,+$("resizeW").value|0),h=Math.max(1,+$("resizeH").value|0),c=document.createElement("canvas"),m=document.createElement("canvas");c.width=w;c.height=h;m.width=w;m.height=h;c.getContext("2d").drawImage(workCanvas,0,0,w,h);m.getContext("2d").drawImage(selectionCanvas,0,0,w,h);commitWork(c,m,ui("实际像素缩放","Pixel resize"))};
 function rotated(src,deg,smooth=true){const r=deg*Math.PI/180,cs=Math.abs(Math.cos(r)),sn=Math.abs(Math.sin(r)),w=Math.ceil(src.width*cs+src.height*sn),h=Math.ceil(src.width*sn+src.height*cs),c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d");x.imageSmoothingEnabled=smooth;x.translate(w/2,h/2);x.rotate(r);x.drawImage(src,-src.width/2,-src.height/2);return c}
-function rotateDraft(deg){if(!workCanvas.width||!deg)return;commitWork(rotated(workCanvas,deg,true),rotated(selectionCanvas,deg,false),"旋转 "+deg+"°")}
+function rotateDraft(deg){if(!workCanvas.width||!deg)return;commitWork(rotated(workCanvas,deg,true),rotated(selectionCanvas,deg,false),ui("旋转 ","Rotate ")+deg+"°")}
 $("rotateLeft").onclick=()=>rotateDraft(-90);$("rotateRight").onclick=()=>rotateDraft(90);$("applyRotate").onclick=()=>rotateDraft(+$("rotateAngle").value||0);
-$("cropToSelection").onclick=()=>{const b=selectionBBox();if(!b){notify("请先选择裁剪区域。","editor","warn");return}const c=document.createElement("canvas"),m=document.createElement("canvas");c.width=m.width=b.w;c.height=m.height=b.h;c.getContext("2d").drawImage(workCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);m.getContext("2d").drawImage(selectionCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);commitWork(c,m,"裁剪")};
+$("cropToSelection").onclick=()=>{const b=selectionBBox();if(!b){notify(ui("请先选择裁剪区域。","Select an area to crop first."),"editor","warn");return}const c=document.createElement("canvas"),m=document.createElement("canvas");c.width=m.width=b.w;c.height=m.height=b.h;c.getContext("2d").drawImage(workCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);m.getContext("2d").drawImage(selectionCanvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);commitWork(c,m,ui("裁剪","Crop"))};
 
 /* AI 局部编辑 */
 function selectionToBW(maskCanvas=selectionCanvas){
@@ -874,7 +888,7 @@ function alignCropRect(rect,W,H,align=8){
   return{x:x0,y:y0,w:Math.max(1,x1-x0),h:Math.max(1,y1-y0)};
 }
 function contextModeLabel(v){
-  return({auto:"自动",crop:"局部优先", "crop-full":"局部 + 整图参考",full:"整图"})[v]||v;
+  return({auto:ui("自动","Auto"),crop:ui("局部优先","Local First"),"crop-full":ui("局部 + 整图参考","Local + Full Reference"),full:ui("整图","Full Image")})[v]||v;
 }
 function promptNeedsGlobalContext(text){
   return /(去掉|去除|移除|删除|消除|抹掉|遮挡|恢复|还原|补全|修复|重建|填补|露出|主体|背景|remove|erase|restore|recover|reconstruct|inpaint|repair|occlud|uncover|fill)/i.test(text||"");
@@ -895,13 +909,13 @@ function planLocalAiRegion(sourceCanvas,maskCanvas,featherPx,requestedMode="auto
   let strategy=requestedMode,reason="";
   if(requestedMode==="auto"){
     if(localCropPercent>=0.72){
-      strategy="full";reason="裁剪区域已接近整图";
+      strategy="full";reason=ui("裁剪区域已接近整图","the crop is already close to the full image");
     }else if(semanticGlobal){
-      strategy="crop-full";reason="指令涉及去除 / 遮挡恢复 / 补全等全局结构";
+      strategy="crop-full";reason=ui("指令涉及去除 / 遮挡恢复 / 补全等全局结构","the instruction involves removal / occlusion recovery / completion that needs global structure");
     }else if(localCropPercent>=0.28||span>=0.50||(bboxArea/(W*H)>=0.08&&density<0.40)){
-      strategy="crop-full";reason="选区跨度或分布较大，需要全局结构参考";
+      strategy="crop-full";reason=ui("选区跨度或分布较大，需要全局结构参考","the selection spans a large area or is distributed, so global context is needed");
     }else{
-      strategy="crop";reason="局部选区集中，优先保留局部细节";
+      strategy="crop";reason=ui("局部选区集中，优先保留局部细节","the selection is compact, so local detail is prioritized");
     }
   }
 
@@ -932,13 +946,13 @@ function imageMadToReference(aiImg,refCanvas,sample=64){
   return sum/(sample*sample*3*255);
 }
 function detectAiFraming(aiImg,sourceSnap,plan){
-  if(plan.strategy==="full")return{mode:"full",localScore:null,fullScore:null,reason:"整图模式"};
-  if(plan.strategy!=="crop-full")return{mode:"local",localScore:null,fullScore:null,reason:"局部模式"};
+  if(plan.strategy==="full")return{mode:"full",localScore:null,fullScore:null,reason:ui("整图模式","full-image mode")};
+  if(plan.strategy!=="crop-full")return{mode:"local",localScore:null,fullScore:null,reason:ui("局部模式","local mode")};
   const localRef=cropCanvas(sourceSnap,plan.crop);
   const localScore=imageMadToReference(aiImg,localRef),fullScore=imageMadToReference(aiImg,sourceSnap);
   const fullLike=fullScore<localScore*0.94;
   return{mode:fullLike?"full":"local",localScore,fullScore,
-    reason:fullLike?"Qwen 输出更接近完整原图构图":"Qwen 输出更接近局部 crop 构图"};
+    reason:fullLike?ui("Qwen 输出更接近完整原图构图","Qwen output is closer to full-image framing"):ui("Qwen 输出更接近局部 crop 构图","Qwen output is closer to local-crop framing")};
 }
 function composeCropCandidate(sourceSnap,aiImg,plan,framing){
   const crop=plan.crop,c=cloneCanvas(sourceSnap),x=c.getContext("2d");
@@ -989,45 +1003,47 @@ function buildLocalAiPrompt(plan,user){
 }
 function localPlanText(plan,sourceSnap,contextCanvas=null){
   const b=plan.bbox,c=plan.crop,[tw,th]=plan.target;
-  let line="上下文："+contextModeLabel(plan.strategy);
-  if(plan.requestedMode==="auto")line+="（自动："+plan.reason+"）";
-  line+=" · 原图 "+sourceSnap.width+"×"+sourceSnap.height+
+  let line=ui("上下文：","Context: ")+contextModeLabel(plan.strategy);
+  if(plan.requestedMode==="auto")line+=ui("（自动："," (Auto: ")+plan.reason+ui("）",")");
+  line+=ui(" · 原图 "," · Source ")+sourceSnap.width+"×"+sourceSnap.height+
     " · Mask bbox "+b.w+"×"+b.h+" @ "+b.x+","+b.y+
-    " · 输入区域 "+c.w+"×"+c.h+" @ "+c.x+","+c.y+
+    ui(" · 输入区域 "," · Input region ")+c.w+"×"+c.h+" @ "+c.x+","+c.y+
     " · Qwen "+tw+"×"+th;
-  if(contextCanvas)line+=" · 整图参考 "+contextCanvas.width+"×"+contextCanvas.height;
+  if(contextCanvas)line+=ui(" · 整图参考 "," · Full reference ")+contextCanvas.width+"×"+contextCanvas.height;
   return line;
 }
-const localContextHints={
-  auto:"自动：普通局部修改优先裁剪；遮挡恢复 / 补全等任务会增加整图参考。",
-  crop:"局部优先：只给高分辨率局部 + Mask，速度最快、局部细节最多。",
-  "crop-full":"局部 + 整图参考：局部负责细节，低分辨率整图负责主体 / 背景 / 遮挡关系。",
-  full:"整图：完整原图 + Mask 一起送模，最慢，但全局关系最完整。"
-};
-$("localAiContext").onchange=e=>$("localAiContextHint").textContent=localContextHints[e.target.value]||"";
+function localContextHint(v){
+  return({
+    auto:ui("自动：普通局部修改优先裁剪；遮挡恢复 / 补全等任务会增加整图参考。","Auto: ordinary local edits prefer a crop; obstruction recovery / completion adds a full-image reference."),
+    crop:ui("局部优先：只给高分辨率局部 + Mask，速度最快、局部细节最多。","Local First: sends only the high-resolution local crop + Mask; fastest and preserves the most local detail."),
+    "crop-full":ui("局部 + 整图参考：局部负责细节，低分辨率整图负责主体 / 背景 / 遮挡关系。","Local + Full Reference: the crop carries detail while a low-resolution full image provides subject / background / occlusion context."),
+    full:ui("整图：完整原图 + Mask 一起送模，最慢，但全局关系最完整。","Full Image: sends the full source + Mask; slowest, but preserves the most complete global relationship.")
+  })[v]||"";
+}
+$("localAiContext").onchange=e=>$("localAiContextHint").textContent=localContextHint(e.target.value);
 $("runLocalAi").onclick=async()=>{
-  if(!workCanvas.width){notify("请先选择图片。","editor","warn");return}
-  const coverage=selectionCoverage();if(coverage<=0){notify("请先选择要 AI 编辑的区域。","editor","warn");return}
-  const user=$("localAiPrompt").value.trim();if(!user){notify("请输入 AI 局部编辑指令。","editor","warn");return}
-  if(adjustmentChanged()){notify("请先应用或重置当前亮度/色彩预览，再使用 AI 局部编辑。","editor","warn");return}
-  if(floating){notify("请先确定或取消当前 Paste，再使用 AI 局部编辑。","editor","warn");return}
-  if(jobRunning){notify("另一个生成 / AI 编辑任务正在运行，请等它完成。","editor","warn");return}
+  if(!workCanvas.width){notify(ui("请先选择图片。","Choose an image first."),"editor","warn");return}
+  const coverage=selectionCoverage();if(coverage<=0){notify(ui("请先选择要 AI 编辑的区域。","Select the area you want AI to edit first."),"editor","warn");return}
+  const user=$("localAiPrompt").value.trim();if(!user){notify(ui("请输入 AI 局部编辑指令。","Enter an AI Local Edit instruction."),"editor","warn");return}
+  if(adjustmentChanged()){notify(ui("请先应用或重置当前亮度/色彩预览，再使用 AI 局部编辑。","Apply or reset the current brightness / color preview before using AI Local Edit."),"editor","warn");return}
+  if(floating){notify(ui("请先确定或取消当前 Paste，再使用 AI 局部编辑。","Apply or cancel the current Paste before using AI Local Edit."),"editor","warn");return}
+  if(jobRunning){notify(ui("另一个生成 / AI 编辑任务正在运行，请等它完成。","Another generation / AI edit job is running. Please wait for it to finish."),"editor","warn");return}
 
   const requestedMode=$("localAiContext").value||"auto";
   const sourceSnap=cloneCanvas(workCanvas),maskSnap=cloneCanvas(selectionCanvas),featherPx=+$("feather").value||0;
   const plan=planLocalAiRegion(sourceSnap,maskSnap,featherPx,requestedMode,user);
-  if(!plan){notify("无法计算 Mask 区域。","editor","error");return}
+  if(!plan){notify(ui("无法计算 Mask 区域。","Unable to calculate the Mask region."),"editor","error");return}
 
   const sourceKey=editorSource?.url||editorSource?.name||"draft",historyAtStart=workHistoryIndex,[w,h]=plan.target;
   const qwenSource=cropCanvas(sourceSnap,plan.crop),qwenMask=cropCanvas(maskSnap,plan.crop);
   const contextCanvas=plan.strategy==="crop-full"?makeContextPreview(sourceSnap,512):null;
   const prompt=buildLocalAiPrompt(plan,user);
 
-  const btn=$("runLocalAi");beginJob(btn,"AI 编辑中…");
-  notify("AI 局部编辑中…\nMask "+(coverage*100).toFixed(1)+"% · 原图与 Mask 已冻结。\n"+
+  const btn=$("runLocalAi");beginJob(btn,ui("AI 编辑中…","AI editing…"));
+  notify(ui("AI 局部编辑中…\n","AI Local Edit in progress…\n")+"Mask "+(coverage*100).toFixed(1)+ui("% · 原图与 Mask 已冻结。\n","% · source image and Mask are frozen.\n")+
     localPlanText(plan,sourceSnap,contextCanvas)+
-    (plan.strategy==="crop"?"\n仅局部送模。":
-     plan.strategy==="crop-full"?"\n局部负责细节，同时提供整图低分辨率全局参考。":"\n完整原图送模。"),"editor","progress");
+    (plan.strategy==="crop"?ui("\n仅局部送模。","\nOnly the local crop is sent to the model."):
+     plan.strategy==="crop-full"?ui("\n局部负责细节，同时提供整图低分辨率全局参考。","\nThe local crop carries detail while a low-resolution full-image reference provides global context."):ui("\n完整原图送模。","\nThe full source image is sent to the model.")),"editor","progress");
   try{
     const payload={
       prompt,size:w+"x"+h,steps:+$("localAiSteps").value||20,seed:+$("localAiSeed").value||42,
@@ -1048,21 +1064,21 @@ $("runLocalAi").onclick=async()=>{
     }
 
     const r=await fetch("/api/mask-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),j=await r.json();
-    if(!r.ok)throw new Error(j.error||"AI 编辑失败");
+    if(!r.ok)throw new Error(j.error||ui("AI 编辑失败","AI edit failed"));
     if((editorSource?.url||editorSource?.name||"draft")!==sourceKey||workHistoryIndex!==historyAtStart){
-      notify("AI 已生成完成，但生成期间当前草稿发生了变化，所以结果没有自动应用。请重新点击 AI 编辑选区。","editor","warn");return;
+      notify(ui("AI 已生成完成，但生成期间当前草稿发生了变化，所以结果没有自动应用。请重新点击 AI 编辑选区。","AI finished generating, but the current draft changed during generation, so the result was not applied automatically. Run AI Edit Selection again."),"editor","warn");return;
     }
 
     const im=await imgFromUrl("data:image/png;base64,"+j.b64_json);
     const framing=detectAiFraming(im,sourceSnap,plan);
     const candidate=composeCropCandidate(sourceSnap,im,plan,framing),merged=hardMergeAi(candidate,sourceSnap,maskSnap,featherPx);
-    if(merged.outsideChanged!==0)throw new Error("安全检查失败：Mask 外检测到 "+merged.outsideChanged+" 个像素变化，结果已拒绝应用");
-    commitWork(merged.canvas,maskSnap,"AI 局部编辑");
+    if(merged.outsideChanged!==0)throw new Error(ui("安全检查失败：Mask 外检测到 ","Safety check failed: detected ")+merged.outsideChanged+ui(" 个像素变化，结果已拒绝应用"," changed pixels outside the Mask; the result was rejected"))
+    commitWork(merged.canvas,maskSnap,ui("AI 局部编辑","AI Local Edit"));
 
     const base=(editorSource?.name||"image").replace(/\.[^.]+$/,"");
     const saveReq=await fetch("/api/save-editor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
       image_b64:dataUrlToB64(merged.canvas.toDataURL("image/png")),
-      name:base+"_AI局部编辑",source_url:editorSource?.url,
+      name:base+ui("_AI局部编辑","_AI_Local_Edit"),source_url:editorSource?.url,
       edit_kind:"ai-local",
       ai_context_mode:plan.strategy,
       ai_framing_mode:framing.mode,
@@ -1072,7 +1088,7 @@ $("runLocalAi").onclick=async()=>{
       crop_rect:[plan.crop.x,plan.crop.y,plan.crop.w,plan.crop.h],
       mask_percent:+(coverage*100).toFixed(2)
     })}),saved=await saveReq.json();
-    if(!saveReq.ok)throw new Error(saved.error||"AI结果自动保存失败");
+    if(!saveReq.ok)throw new Error(saved.error||ui("AI结果自动保存失败","Failed to auto-save the AI result"));
 
     await refreshAssets();
     const savedAsset=assets.find(a=>a.url===saved.url)||{url:saved.url,name:saved.name,kind:"edited"};
@@ -1087,42 +1103,46 @@ $("runLocalAi").onclick=async()=>{
     renderEditor();renderAssets();
 
     const perf=formatPerf(j.perf);$("localAiPerf").textContent=perf;
-    notify("AI 局部编辑完成并已自动保存到右侧图片库。\n已切换到新图片："+saved.name+
-      "\n旧图仍保留；旧 Mask 已清空；编辑历史已从新图片重新开始。"+
+    notify(ui("AI 局部编辑完成并已自动保存到右侧图片库。\n已切换到新图片：","AI Local Edit completed and was auto-saved to the image library.\nSwitched to new image: ")+saved.name+
+      ui("\n旧图仍保留；旧 Mask 已清空；编辑历史已从新图片重新开始。","\nThe old image is preserved; the old Mask was cleared; edit history restarted from the new image.")+
       "\n"+localPlanText(plan,sourceSnap,contextCanvas)+
-      (plan.strategy==="crop-full"?"\nQwen 输出构图："+(framing.mode==="full"?"整图构图 → 已按原图坐标反向裁出对应局部":"局部 crop 构图")+
-        " · 局部差异 "+framing.localScore.toFixed(3)+" / 整图差异 "+framing.fullScore.toFixed(3):"")+
-      "\n本次 Mask "+(coverage*100).toFixed(1)+"% · Mask 外像素安全检查：0 个变化 · Mask 内变化 "+merged.insideChanged+" 个像素"+
-      (featherPx?" · 羽化仅向 Mask 内部过渡":"")+"\n"+perf,"editor","important");
-  }catch(e){notify("AI 编辑失败："+e.message,"editor","error")}
+      (plan.strategy==="crop-full"?ui("\nQwen 输出构图：","\nQwen output framing: ")+(framing.mode==="full"?ui("整图构图 → 已按原图坐标反向裁出对应局部","full-image framing → corresponding local region was reverse-cropped using source coordinates"):ui("局部 crop 构图","local-crop framing"))+
+        ui(" · 局部差异 "," · local difference ")+framing.localScore.toFixed(3)+ui(" / 整图差异 "," / full-image difference ")+framing.fullScore.toFixed(3):"")+
+      ui("\n本次 Mask ","\nMask ")+(coverage*100).toFixed(1)+ui("% · Mask 外像素安全检查：0 个变化 · Mask 内变化 ","% · outside-Mask safety check: 0 changes · inside-Mask changes ")+merged.insideChanged+ui(" 个像素"," pixels")+
+      (featherPx?ui(" · 羽化仅向 Mask 内部过渡"," · feathering transitions only inward within the Mask"):"")+"\n"+perf,"editor","important");
+  }catch(e){notify(ui("AI 编辑失败：","AI edit failed: ")+e.message,"editor","error")}
   finally{endJob(btn)}
 };
 
 /* 服务状态 / 模型 */
-const phaseLabel={ready:"在线",loading:"加载中…",switching:"切换中…",failed:"启动失败",stopped:"未启动",missing:"未安装模型"};
+function phaseLabel(v){return({ready:ui("在线","Online"),loading:ui("加载中…","Loading…"),switching:ui("切换中…","Switching…"),failed:ui("启动失败","Start failed"),stopped:ui("未启动","Stopped"),missing:ui("未安装模型","Model not installed")})[v]||v}
 let statusTimer=null,lastPhase=null;
 function variantLabel(v){return modelStatus?.variants?.[v]?.label||v||"—"}
+function variantNote(k,v){
+  if(getLanguage()!=="en")return v.note;
+  return k==="4bit"?"About 10 GB. Lower memory use; recommended for Macs with 32 GB or less.":"About 17.6 GB. Lower quantization loss; recommended for 48 GB+ memory. A 32 GB Mac usually needs Skip memory preflight.";
+}
 function renderModelBadge(){
   const m=modelStatus;
-  if(!m){modelBadge.textContent="服务离线";modelBadge.className="badge off";return}
-  modelBadge.textContent=m.phase==="missing"?"Qwen · 未安装模型":"Qwen "+variantLabel(m.active_variant||m.desired_variant)+" · "+(phaseLabel[m.phase]||m.phase);
+  if(!m){modelBadge.textContent=ui("服务离线","Service offline");modelBadge.className="badge off";return}
+  modelBadge.textContent=m.phase==="missing"?ui("Qwen · 未安装模型","Qwen · Model not installed"):"Qwen "+variantLabel(m.active_variant||m.desired_variant)+" · "+phaseLabel(m.phase);
   modelBadge.className="badge "+(m.phase==="ready"?"ok":m.phase==="loading"||m.phase==="switching"?"busy":"off");
 }
 async function refreshStatus(){
   try{
     const s=await fetch("/api/status",{cache:"no-store"}).then(r=>r.json());
     modelStatus=s.model;serverBusy=s.busy||null;
-    memBadge.textContent="Swap "+(s.swap_mb==null?"—":(s.swap_mb/1024).toFixed(1)+" GB")+" · 空闲 "+(s.memory_free_pct??"—")+"%";
+    memBadge.textContent="Swap "+(s.swap_mb==null?"—":(s.swap_mb/1024).toFixed(1)+" GB")+ui(" · 空闲 "," · Free ")+(s.memory_free_pct??"—")+"%";
     const phase=modelStatus.phase;
     if(phase!==lastPhase){
-      if(phase==="ready"&&lastPhase)notify(variantLabel(modelStatus.active_variant)+" 模型已就绪。","model","important");
-      else if(phase==="loading"&&!lastPhase)notify("模型加载中，首次加载通常需要 1–3 分钟。","model","progress");
+      if(phase==="ready"&&lastPhase)notify(variantLabel(modelStatus.active_variant)+ui(" 模型已就绪。"," model is ready."),"model","important");
+      else if(phase==="loading"&&!lastPhase)notify(ui("模型加载中，首次加载通常需要 1–3 分钟。","Model is loading; the first load usually takes 1–3 minutes."),"model","progress");
       else if(phase==="missing"){
-        notify("尚未安装本地 Qwen 模型。点击右上角“未安装模型”可查看 4-bit / 8-bit 的安装命令。","model","important");
+        notify(ui("尚未安装本地 Qwen 模型。点击右上角“未安装模型”可查看 4-bit / 8-bit 的安装命令。","No local Qwen model is installed. Click “Model not installed” at the top right to see the 4-bit / 8-bit install commands."),"model","important");
       }else if(phase==="failed"){
-        const err=modelStatus.error||"模型进程已退出";
-        const hint=err.includes("跳过内存预检")?"":"\n可以点右上角模型状态打开模型设置，换用 4-bit 或勾选“跳过内存预检”后重试。";
-        notify("模型启动失败："+err+hint+(modelStatus.log_tail?"\n\n日志：\n"+modelStatus.log_tail:""),"model","error");
+        const err=modelStatus.error||ui("模型进程已退出","Model process exited");
+        const hint=err.includes("跳过内存预检")?"":ui("\n可以点右上角模型状态打开模型设置，换用 4-bit 或勾选“跳过内存预检”后重试。","\nOpen model settings from the top-right status, switch to 4-bit, or enable Skip memory preflight and retry.");
+        notify(ui("模型启动失败：","Model start failed: ")+err+hint+(modelStatus.log_tail?ui("\n\n日志：\n","\n\nLog:\n")+modelStatus.log_tail:""),"model","error");
       }
     }
     lastPhase=phase;
@@ -1137,12 +1157,12 @@ $("refreshStatus").onclick=refreshStatus;
 
 function renderModelDialog(resetInputs=true){
   const m=modelStatus,box=$("modelChoices");
-  if(!m){$("modelDialogInfo").textContent="无法连接 Workbench 服务。";box.innerHTML="";$("applyModel").disabled=true;return}
-  const now=m.active_variant?variantLabel(m.active_variant)+"（"+(phaseLabel[m.phase]||m.phase)+"）":(phaseLabel[m.phase]||m.phase);
-  $("modelDialogInfo").textContent="本机内存 "+(m.ram_gb??"—")+" GB · 推荐 "+variantLabel(m.recommended)+" · 当前 "+now+"。\n切换会卸载当前模型并重新加载，通常需要 1–3 分钟；选择会保存，下次启动沿用。";
+  if(!m){$("modelDialogInfo").textContent=ui("无法连接 Workbench 服务。","Unable to connect to the Workbench service.");box.innerHTML="";$("applyModel").disabled=true;return}
+  const now=m.active_variant?variantLabel(m.active_variant)+" ("+phaseLabel(m.phase)+")":phaseLabel(m.phase);
+  $("modelDialogInfo").textContent=ui("本机内存 ","System memory ")+(m.ram_gb??"—")+" GB · "+ui("推荐 ","Recommended ")+variantLabel(m.recommended)+" · "+ui("当前 ","Current ")+now+ui("。\n切换会卸载当前模型并重新加载，通常需要 1–3 分钟；选择会保存，下次启动沿用。",".\nSwitching unloads the current model and reloads the new one, usually taking 1–3 minutes. Your choice is saved for the next launch.");
   // Re-applying while a model is still loading would stop and restart it and waste the wait.
-  const blocked=!m.installed.length?"尚未安装模型":m.phase==="switching"?"正在切换模型":m.phase==="loading"?"模型正在加载，请等它就绪后再切换"
-    :(jobRunning||serverBusy)?"有生成 / AI 编辑任务正在运行":"";
+  const blocked=!m.installed.length?ui("尚未安装模型","No model installed"):m.phase==="switching"?ui("正在切换模型","Model is switching"):m.phase==="loading"?ui("模型正在加载，请等它就绪后再切换","Model is loading; wait until it is ready before switching")
+    :(jobRunning||serverBusy)?ui("有生成 / AI 编辑任务正在运行","A generation / AI edit job is running"):"";
   $("applyModel").disabled=!!blocked;$("applyModel").title=blocked;
   if(!resetInputs)return; // keep the user's in-progress choice while the status poll re-renders
   box.innerHTML="";
@@ -1151,9 +1171,9 @@ function renderModelDialog(resetInputs=true){
     const installed=m.installed.includes(k);
     const lab=document.createElement("label");lab.className="modelChoice"+(installed?"":" disabled");
     const radio=document.createElement("input");radio.type="radio";radio.name="modelVariant";radio.value=k;radio.checked=k===current;radio.disabled=!installed;
-    const title=document.createElement("span");title.textContent=v.label+(k===m.recommended?"（推荐）":"")+(installed?"":"（未下载）");
-    const note=document.createElement("small");note.textContent=v.note+(!installed?"\n下载：.venv/bin/python scripts/setup_model.py --model "+v.id
-      :v.edit_ready?"":"\n⚠ 缺少编辑用视觉模块：指令编辑 / AI 局部编辑不可用。补齐：.venv/bin/python scripts/fetch_edit_vision.py --model-dir ~/Documents/AI-Models/image/"+v.id);
+    const title=document.createElement("span");title.textContent=v.label+(k===m.recommended?ui("（推荐）"," (Recommended)"):"")+(installed?"":ui("（未下载）"," (Not downloaded)"));
+    const note=document.createElement("small");note.textContent=variantNote(k,v)+(!installed?ui("\n下载：","\nDownload: ")+".venv/bin/python scripts/setup_model.py --model "+v.id
+      :v.edit_ready?"":ui("\n⚠ 缺少编辑用视觉模块：指令编辑 / AI 局部编辑不可用。补齐：","\n⚠ Edit vision module is missing: True Edit / AI Local Edit are unavailable. Install: ")+".venv/bin/python scripts/fetch_edit_vision.py --model-dir ~/Documents/AI-Models/image/"+v.id);
     lab.append(radio,title,note);box.append(lab);
   }
   $("skipMemPreflight").checked=m.active_variant?m.active_skip_mem_preflight:m.desired_skip_mem_preflight;
@@ -1165,15 +1185,23 @@ $("modelDialog").addEventListener("close",async()=>{
   if(!variant)return;
   try{
     const r=await fetch("/api/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({variant,skip_mem_preflight:skip})}),j=await r.json();
-    if(!r.ok)throw new Error(j.error||"切换失败");
-    if(j.switching){lastPhase="switching";notify("正在切换到 "+variantLabel(variant)+"：卸载当前模型并重新加载，通常需要 1–3 分钟。","model","progress")}
-    else notify("已经在使用 "+variantLabel(variant)+"，设置已保存。","model","important");
-  }catch(e){notify("模型切换失败："+e.message,"model","error")}
+    if(!r.ok)throw new Error(j.error||ui("切换失败","Switch failed"));
+    if(j.switching){lastPhase="switching";notify(ui("正在切换到 ","Switching to ")+variantLabel(variant)+ui("：卸载当前模型并重新加载，通常需要 1–3 分钟。",": unloading the current model and reloading, usually 1–3 minutes."),"model","progress")}
+    else notify(ui("已经在使用 ","Already using ")+variantLabel(variant)+ui("，设置已保存。","; settings saved."),"model","important");
+  }catch(e){notify(ui("模型切换失败：","Model switch failed: ")+e.message,"model","error")}
   refreshStatus();
 });
 
 // Closing or reloading the tab must not silently drop an unsaved draft either.
 window.addEventListener("beforeunload",e=>{if(isEditorDirty()||adjustmentChanged()||floating){e.preventDefault();e.returnValue=""}});
 
+document.addEventListener("ui-language-change",()=>{
+  applyStaticI18n();updateModeTabLabels();
+  renderRefQueue();renderAssets();renderEditor();renderModelBadge();updateTokenHint();updateMaskInfo();clipboardControls();
+  $("localAiContextHint").textContent=localContextHint($("localAiContext").value);
+  if($("modelDialog").open)renderModelDialog(false);
+  updateRunButtons();
+});
 clipboardControls();refreshStatus();refreshAssets();autoGenSize();setMode("generate");
-notify("就绪。所有提示都记录在右侧栏（最新在最上面）；进行中的任务、重要结果和错误还会在右下角弹出。","gen",false);
+$("localAiContextHint").textContent=localContextHint($("localAiContext").value);
+notify(ui("就绪。所有提示都记录在右侧栏（最新在最上面）；进行中的任务、重要结果和错误还会在右下角弹出。","Ready. All notices are recorded in the right sidebar (newest first); active jobs, important results, and errors also appear as bottom-right toasts."),"gen",false);
