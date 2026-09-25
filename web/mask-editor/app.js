@@ -118,7 +118,7 @@ function syncCurrentMainToMode(){
 }
 function updateModeTabLabels(){
   const zh={generate:"文生图",variation:"图生图",edit:"指令编辑",editor:"图片编辑"};
-  const en={generate:"Text→Image",variation:"Variation",edit:"True Edit",editor:"Editor"};
+  const en={generate:"Text→Img",variation:"Variation",edit:"True Edit",editor:"Editor"};
   tabs.forEach(b=>b.textContent=getLanguage()==="en"?en[b.dataset.mode]:zh[b.dataset.mode]);
 }
 function setMode(next){

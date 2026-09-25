@@ -1,5 +1,7 @@
 # Image MLX Lab 使用说明（中文）
 
+[English](USER_GUIDE_EN.md) | **中文**
+
 > 版本：v0.1 · 2026-09-25  
 > 适用界面：当前中文界面
 

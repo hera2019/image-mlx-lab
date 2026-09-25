@@ -1,57 +1,65 @@
 # Image MLX Lab
 
+**English** | [中文](README_ZH.md)
+
 <img src="assets/image-mlx-lab-icon.svg" width="80" alt="Image MLX Lab icon">
 
 > Project-wide agent/development rules: `docs/PROJECT_GUIDE.md`
 
-Image MLX Lab 是一个面向 Apple Silicon / MLX 的本地图像生成与编辑研究工作台。当前后端是 Qwen-Image-2.1；项目命名不绑定具体模型，后续可以继续接入其他 MLX 图像模型。
+Image MLX Lab is a local image generation and AI-assisted editing workbench for Apple Silicon / MLX. The current backend is Qwen-Image-2.1, while the project name intentionally stays model-agnostic so other MLX image models can be added later.
 
-所有计算都在本机完成：图片、提示词和结果不会上传到任何服务器；网页界面只监听 `127.0.0.1`，局域网里的其他设备无法访问。
+All generation and editing run locally. Images, prompts, and results are not sent to a remote service by Image MLX Lab. The web UI listens on `127.0.0.1` only, so it is not exposed to other devices on the LAN by default.
 
-当前主要测试机器：Apple M2 Max，32 GB 统一内存。
+Primary test machine: Apple M2 Max with 32 GB unified memory.
 
-## 效果与使用说明
+## Demos and documentation
 
-中文完整使用说明：[docs/USER_GUIDE_ZH.md](docs/USER_GUIDE_ZH.md)
+[English User Guide](docs/USER_GUIDE_EN.md) · [中文使用说明](docs/USER_GUIDE_ZH.md)
 
-![Image MLX Lab 真实编辑效果](docs/images/showcase-overview-zh-v1.png)
+![Image MLX Lab real editing results](docs/images/showcase-overview-en-v1.png)
 
-上图全部使用专门生成的演示素材，并通过实际 Qwen 工作流完成。当前重点能力包括：
+The examples above use purpose-generated demo assets and were produced through the actual Qwen workflow.
 
-- **AI 局部编辑**：只修改 Mask 内区域，Mask 外像素保持原图不变；
-- **遮挡移除与结构重建**：例如去掉腰包后恢复被遮挡的衣摆、裤腰和细节；
-- **局部材质替换**：只替换指定区域的材质与颜色；
-- **指令编辑（True Edit）**：用自然语言完成明确的对象 / 属性修改；
-- 文生图、图生图、选区、修复、克隆、复制粘贴、调色、裁剪等普通工作台能力。
+- **AI Local Edit**: edit only the Mask region; pixels outside the Mask are protected by the final full-size compositing step.
+- **Remove and reconstruct**: remove an obstruction and reconstruct hidden structure.
+- **Local material swap**: change material and color only inside the selected area.
+- **True Edit**: make explicit object or attribute changes with natural-language instructions.
+- Text to Image, Image to Image, selections, healing, clone stamp, copy/paste, color adjustments, crop, resize, rotate, and more.
 
-公开截图和演示图只使用专门生成并人工检查过的素材，不直接使用 `results/` 中的私人图片或测试结果。
+## Responsible use
 
-## 使用规范
+Follow applicable law and respect privacy, likeness rights, and other legitimate rights.
 
-请遵守当地法律，并尊重他人的隐私、肖像权和其他合法权益。
+Do not use this tool to create sexual content involving minors, non-consensual intimate or sexual imagery, fraudulent impersonation, harassment, extortion, or other unlawful content. You are responsible for ensuring that your use and generated / edited content comply with applicable law, platform rules, and model licenses.
 
-不得将本工具用于制作涉及未成年人的色情内容、未经本人同意的私密或色情影像、欺诈性冒充、骚扰、勒索或其他违法用途。使用者应自行确认其使用方式及生成 / 编辑内容符合适用法律、平台规则和模型许可证。
+## Licenses
 
-## 许可证
+Code and model weights have different licenses:
 
-代码和模型适用不同的许可证：
+- **Image MLX Lab source code** is released under the [MIT License](LICENSE), © 2026 Houjun Co., Ltd.
+- The default **Qwen-Image-2.1 model** is governed by the [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE). It is limited to non-commercial research / evaluation unless you obtain separate commercial permission from the model provider. Model weights are not included in this repository.
+- The runtime [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve) uses MIT / Apache-2.0. This repository ships only a patch that is applied during setup.
+- You are responsible for how generated and edited content is used and for compliance with the model license.
 
-- **Image MLX Lab 源代码**采用 [MIT License](LICENSE)，© 2026 Houjun Co., Ltd.。
-- **默认使用的 Qwen-Image-2.1 模型**受 [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE) 限制，**仅限非商业的研究和评估用途**；商业使用该模型需要另行取得 Qwen 的许可。模型权重不包含在本仓库中，需要自行下载。
-- 运行时 [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve) 采用 MIT / Apache-2.0，本仓库只附带一个补丁，安装时自动应用。
-- 用模型生成、编辑出来的内容由使用者自行负责，并受模型许可证约束。
+See [NOTICE](NOTICE) for details.
 
-详见 [NOTICE](NOTICE)。
+## Requirements
 
-## 需要准备
+- Apple Silicon Mac (M1 or later). 32 GB+ unified memory is recommended.
+- The 4-bit model needs roughly 14 GB of free memory while loading. Lower-memory Macs may require **Skip memory preflight**, which can use substantial swap and become much slower.
+- Disk usage: about 10 GB for 4-bit, 17.6–18 GB for 8-bit, about 1.1 GB per optional edit-vision module, plus roughly 2 GB for the runtime toolchain.
+- **The first model download requires at least 24 GiB of free disk space.** The setup script enforces this to avoid failing mid-download.
+- Xcode 26.2+ with the Metal Toolchain component.
+- Homebrew `cmake`.
+- Python 3.9+.
 
-- Apple Silicon Mac（M1 及以后），建议 32 GB 及以上统一内存。4-bit 加载时约需 14 GB 空闲内存；内存更小的机器需要“跳过内存预检”，会大量使用 swap、明显变慢。
-- 磁盘空间：4-bit 约 10 GB，8-bit 约 18 GB；可选的编辑用视觉模块每个版本再加约 1.1 GB；另需约 2 GB 编译运行时。**首次下载模型前安装脚本会要求至少 24 GiB 可用空间**，用于避免下载到一半因空间不足失败。
-- Xcode 26.2+，并安装 Metal Toolchain 组件（`xcrun -sdk macosx metal --version` 报错时运行 `xcodebuild -downloadComponent MetalToolchain`）。
-- Homebrew 的 `cmake`：`brew install cmake`。
-- Python 3.9+（macOS 自带的 `python3` 即可）。
+If `xcrun -sdk macosx metal --version` fails, install the Metal Toolchain with:
 
-## 第一次安装
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
+
+## First-time setup
 
 ```bash
 cd ~/Documents
@@ -61,108 +69,128 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-下载模型并编译运行时（首次需要较长时间，下载支持断点续传）：
+Download the 4-bit model and build the pinned runtime:
 
 ```bash
 .venv/bin/python scripts/setup_model.py --model qwen-image-2.1-mlx-4bit
 ```
 
-想用 8-bit 就把参数换成 `qwen-image-2.1-mlx-8bit`；两个版本可以都装，之后在界面里切换。
+For 8-bit, replace the model name with `qwen-image-2.1-mlx-8bit`. Both variants can be installed and switched from the UI later.
 
-这一步会：
-1. 下载量化模型到 `~/Documents/AI-Models/image/<模型名>/`；
-2. **询问**是否下载编辑用视觉模块（约 1.1 GB，只从官方权重中截取视觉部分）；
-3. 拉取固定版本的 `mlx-serve`、应用补丁并编译到 `worktrees/mlx-serve/`。
+The setup script will:
 
-编辑用视觉模块是可选的，按需安装：
+1. Download the quantized model to `~/Documents/AI-Models/image/<model-name>/`.
+2. Ask whether to download the optional edit-vision module (~1.1 GB).
+3. Fetch a pinned `mlx-serve` revision, apply the project patch, and build it under `worktrees/mlx-serve/`.
 
-| 功能 | 需要视觉模块吗 |
-|---|---|
-| 文生图、图生图、普通图片编辑（选区、修复、调色、裁剪等） | 不需要 |
-| 指令编辑（True Edit）、AI 局部编辑 | 需要 |
+The edit-vision module is optional:
 
-不想被询问时，可以直接加 `--edit-vision`（下载）或 `--skip-edit-vision`（不下载）。
-没装时，这两个功能会给出明确提示，模型设置里也会显示补装命令。以后需要时随时补装：
+| Feature | Edit vision required? |
+| --- | --- |
+| Text to Image, Image to Image, normal image editing | No |
+| True Edit, AI Local Edit | Yes |
+
+Use `--edit-vision` or `--skip-edit-vision` to avoid the interactive prompt.
+
+To add edit vision later:
 
 ```bash
 .venv/bin/python scripts/fetch_edit_vision.py --model-dir ~/Documents/AI-Models/image/qwen-image-2.1-mlx-4bit
 ```
 
-## 启动与停止
+## Start and stop
 
-双击 `Start-Image-MLX-Lab.command`，浏览器会打开 `http://127.0.0.1:18080/web/mask-editor/`。
-模型在后台加载，页面右上角会显示状态。
+Double-click `Start-Image-MLX-Lab.command`.
 
-停止：双击 `Stop-Image-MLX-Lab.command`。
+The browser opens:
 
-## 选择 4-bit / 8-bit
+`http://127.0.0.1:18080/web/mask-editor/`
 
-点击页面右上角的模型状态（例如“Qwen 4-bit · 在线”）打开模型设置：
+The local model loads in the background. The top-right status shows loading / ready state and lets you switch model variants.
 
-| 版本 | 模型大小 | 适合 |
-|---|---|---|
-| 4-bit | 约 10 GB | 占用内存少；推荐 32 GB 及以下内存的 Mac |
-| 8-bit | 约 17.6 GB | 量化损失更小；推荐 48 GB 以上内存 |
+To stop the workbench, double-click `Stop-Image-MLX-Lab.command`.
 
-- 默认按本机内存和已安装的版本自动推荐；手动选择后会保存在 `results/settings.json`，下次启动沿用。
-- 切换会卸载当前模型并重新加载，通常需要 1–3 分钟；有生成任务运行时不能切换。
-- **跳过内存预检（高级）**：mlx-serve 会在空闲内存不足时拒绝加载模型。勾选后强制加载，32 GB 机器跑 8-bit 通常需要它，但可能大量使用 swap、明显变慢。
-- 不使用官方 BF16 全量权重：主要组件约 33 GB，对 32 GB Mac 余量太小。
+The UI supports **中文 / English** from the top-right language selector. The selected language is stored locally in the browser.
 
-## 功能
+## 4-bit and 8-bit
 
-顶部四个模式只切换左侧工具栏；中间主图和右侧图片库始终保留。
+Click the model status badge in the top-right corner.
 
-- **文生图**：可选透明 RGBA 背景。
-- **图生图**：根据原图生成相似变体，适合整体风格、构图变化。
-- **指令编辑（True Edit）**：按文字修改指定内容，可附加最多 3 张参考图。
-- **图片编辑**：矩形 / 椭圆 / 套索 / 画笔 / 魔棒选区，扩展 / 收缩 / 羽化；克隆图章、修复画笔；复制 / 剪切 / 粘贴（可跨图片）；旋转、缩放、裁剪；亮度 / 对比度 / 饱和度 / 模糊 / 锐化；以及 **AI 局部编辑**。
-- **AI 局部编辑**：只修改选区（Mask）内的像素，选区外保证不变；结果自动另存为新图，原图保留。
+| Variant | Model size | Recommended for |
+| --- | ---: | --- |
+| 4-bit | ~10 GB | Lower memory use; recommended for Macs with 32 GB or less |
+| 8-bit | ~17.6 GB | Lower quantization loss; recommended for 48 GB+ memory |
 
-编辑默认不覆盖原图：“保存为新图”是默认选项；切换图片、关闭页面时，未保存的修改都会先提示。
-同一时间只运行一个生成 / AI 编辑任务。
+- The recommended variant is chosen from installed models and total memory.
+- Your manual choice is saved in `results/settings.json`.
+- Switching unloads the current model and reloads the selected one, usually taking 1–3 minutes.
+- Model switching is blocked while generation / AI editing is running.
+- **Skip memory preflight** can force loading when free memory is low. It may cause heavy swap use and severe slowdown.
+- The project does not use the full BF16 weights by default because their main components are too large for a comfortable 32 GB workflow.
 
-## 固定版本
+## Main features
 
-- 4-bit：`ddalcu/Qwen-Image-2.1-MLX-Serve-4bit` @ `88eb1b3bb5591ed59b68a6e1a1c2d9baade73e38`
-- 8-bit：`ddalcu/Qwen-Image-2.1-MLX-Serve-8bit` @ `fbda4caa0b4b1e17b5a29633e8deb600386f1eaf`
-- 编辑视觉模块来源：`Qwen/Qwen-Image-2.1` @ `790c92633540aa0cb11d9abf19eb46d861714758`
-- runtime：`ddalcu/mlx-serve`，branch `feat/qwen-image-2.1`，commit `c7c2cc5b3d160ecac2ad16b00d4feedfc6ce5e93`
+The four top modes change the left tool panel; the center image and right-side library stay available.
 
-runtime 目前仍是未正式发布的 Qwen-Image-2.1 feature branch，所以同时固定 commit，避免分支变化影响复现。
+- **Text to Image** — local generation, with optional transparent RGBA output.
+- **Image to Image / Variation** — create related versions from a source image; best for broader style, composition, or overall changes.
+- **True Edit** — explicit instruction-based editing, with up to 3 extra reference images.
+- **Image Editor** — rectangle / ellipse / free lasso / brush / magic-wand selections; expand / contract / feather; clone stamp; healing brush; copy / cut / paste across images; rotate / resize / crop; brightness / contrast / saturation / blur / sharpen.
+- **AI Local Edit** — edit only a selected Mask area. The final result is recomposited with the frozen full-size Mask so pixels outside the Mask remain unchanged.
 
-## 命令行脚本（可选）
+Image editing is non-destructive by default: **Save as New** is the normal workflow. Switching images or leaving the page prompts before unsaved changes are discarded.
 
-不开网页也可以直接调用模型服务。先单独启动模型：
+Only one generation / AI edit job runs at a time, including across multiple browser tabs.
+
+### English UI and model prompts
+
+The UI can be displayed in English, but several model-internal prompts intentionally remain in Chinese because they are part of the tested Qwen editing workflow. This includes the AI Local Edit wrapper, reference-role prefixes, and transparent-background instruction. UI translation is kept separate from model prompt text.
+
+## Pinned versions
+
+- 4-bit: `ddalcu/Qwen-Image-2.1-MLX-Serve-4bit` @ `88eb1b3bb5591ed59b68a6e1a1c2d9baade73e38`
+- 8-bit: `ddalcu/Qwen-Image-2.1-MLX-Serve-8bit` @ `fbda4caa0b4b1e17b5a29633e8deb600386f1eaf`
+- Edit vision source: `Qwen/Qwen-Image-2.1` @ `790c92633540aa0cb11d9abf19eb46d861714758`
+- Runtime: `ddalcu/mlx-serve`, branch `feat/qwen-image-2.1`, commit `c7c2cc5b3d160ecac2ad16b00d4feedfc6ce5e93`
+
+The runtime branch is still a Qwen-Image-2.1 feature branch, so the commit is pinned for reproducibility.
+
+## CLI scripts (optional)
+
+You can use the model service without the web UI.
+
+Start the model:
 
 ```bash
-./scripts/start_server.sh 4bit          # 或 8bit；加第二个参数 force 可跳过内存预检
+./scripts/start_server.sh 4bit
+# or: ./scripts/start_server.sh 8bit
+# add "force" as the second argument to skip memory preflight
 ```
 
-快速冒烟测试：
+Quick smoke test:
 
 ```bash
 .venv/bin/python scripts/generate.py \
-  --prompt "一只红狐狸站在新雪中，清晨自然光，写实摄影" \
+  --prompt "A red fox standing in fresh snow, realistic morning light" \
   --size 512x512 --steps 4 --seed 42
 ```
 
-正式质量测试可改成 `1024x1024`、`--steps 40`；也可以用 `--prompt-file prompt.txt` 读取 UTF-8 提示词文件。
-输出在 `results/generated/`，文件名是“提示词前缀 + 时间”，连续生成不会互相覆盖。
+For a higher-quality run, increase size / steps, for example `1024x1024` and `--steps 40`. `--prompt-file prompt.txt` reads a UTF-8 prompt file.
 
-## 本地数据
+Outputs go to `results/generated/`.
 
-整个 `results/` 目录都被 Git 忽略，只保存在本机：
+## Local data
 
-- `results/web/`：网页生成 / 编辑后的正式图片；
-- `results/library/`：载入的图片；
-- `results/intermediate/`：模型原始中间输出（右侧图片库默认不显示，可筛选“中间结果”查看）；
-- `results/performance/`：生成耗时、内存和 swap 记录；
-- `results/settings.json`：界面里选择的模型版本。
+The entire `results/` directory is ignored by Git and stays local:
 
-模型日志在 `~/.mlx-serve/logs/image-mlx-lab-model.log`。
+- `results/web/` — final web-generated / edited images
+- `results/library/` — loaded images
+- `results/intermediate/` — raw intermediate model outputs
+- `results/performance/` — timing, memory, swap, and prompt records
+- `results/settings.json` — saved model choice
 
-## 当前测试边界
+Model logs are stored at `~/.mlx-serve/logs/image-mlx-lab-model.log`.
 
-量化包主要用于 Apple Silicon 上的可用性验证。Qwen-Image-2.1 官方模型还支持原生透明图和多参考图编辑，
-但这些能力不应直接用量化包的结果代替官方 BF16 路径的结论。
+## Current test boundary
+
+The quantized packages are primarily validated for practical use on Apple Silicon. Qwen-Image-2.1 also supports capabilities in its official BF16 path; results from the quantized MLX workflow should not be treated as a substitute for conclusions about the official BF16 implementation.

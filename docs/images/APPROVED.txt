@@ -12,3 +12,9 @@ showcase-local-material-zh-v1.png
 showcase-true-edit-color-zh-v1.png
 ui-main-workbench-zh-v1.png
 ui-ai-local-edit-zh-v1.png
+ui-main-workbench-en-v1.png
+ui-ai-local-edit-en-v1.png
+showcase-overview-en-v1.png
+showcase-local-remove-en-v1.png
+showcase-local-material-en-v1.png
+showcase-true-edit-color-en-v1.png
