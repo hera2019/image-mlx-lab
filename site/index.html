@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image MLX Lab · Local AI image generator and editor for Mac (Apple Silicon)</title>
+<meta name="description" content="Image MLX Lab is a free, open-source local AI image generator and editor for Apple Silicon Macs: text to image, image variations, instruction-based editing and mask-based AI inpainting with Qwen-Image on MLX. Runs on your Mac; your images and prompts never leave your computer.">
+<meta name="keywords" content="AI image generator, AI image editor, local AI, offline image generation, text to image, image to image, AI inpainting, mask inpainting, object removal, remove objects from photos, instruction-based image editing, AI photo editing, Qwen-Image, Qwen-Image-2.1, MLX, Apple Silicon, Mac, M1, M2, M3, M4, private, open source, AI 绘图, AI 修图, 本地 AI, 图片编辑">
+<link rel="canonical" href="https://houjun.dev/iml/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Image MLX Lab">
+<meta property="og:url" content="https://houjun.dev/iml/">
+<meta property="og:title" content="Image MLX Lab · Local AI image generation and editing for Mac">
+<meta property="og:description" content="Generate images and edit only the area you select — remove objects, swap materials, change a colour with words. Free, open-source code, running entirely on your Apple Silicon Mac.">
+<meta property="og:image" content="https://houjun.dev/iml/media/og-card-v1.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#132a52">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<!-- Only facts that are true today: free code (MIT), default model non-commercial, macOS on Apple Silicon. No ratings, no download counts. -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"SoftwareApplication","name":"Image MLX Lab","url":"https://houjun.dev/iml/",
+  "description":"Local AI image generator and editor for Apple Silicon Macs: text to image, image variations, instruction-based editing and mask-based AI inpainting with Qwen-Image on MLX. Everything stays on your computer.",
+  "applicationCategory":"MultimediaApplication","operatingSystem":"macOS on Apple Silicon",
+  "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/license/mit",
+  "codeRepository":"https://github.com/hera2019/image-mlx-lab",
+  "inLanguage":["en","zh"],
+  "featureList":["Text to image, with optional transparent background","Image to image variations","Instruction-based editing (True Edit) with up to three reference images","AI local edit: change only the masked area, pixels outside the mask kept unchanged","Selections: rectangle, ellipse, lasso, brush, magic wand; expand, contract, feather","Clone stamp, healing brush, copy and paste across images, crop, resize, rotate, colour adjustments","Non-destructive: undo and redo, save as a new image","4-bit and 8-bit quantized models, switchable in the app","Runs on your Mac; no upload, no account, no telemetry"],
+  "publisher":{"@type":"Organization","name":"Houjun Co., Ltd."}},
+ {"@type":"FAQPage","mainEntity":[
+  {"@type":"Question","name":"Does Image MLX Lab upload my images?","acceptedAnswer":{"@type":"Answer","text":"No. The model runs on your Mac with MLX. Your images, masks, prompts and results stay in a folder on your computer; there is no account, no cloud service and no telemetry."}},
+  {"@type":"Question","name":"Is Image MLX Lab free? Can I use it commercially?","acceptedAnswer":{"@type":"Answer","text":"The Image MLX Lab code is free and open source under the MIT License. The default model, Qwen-Image-2.1, is licensed by Qwen for non-commercial research and evaluation only, so using the app with that model is non-commercial unless you obtain a commercial licence from Qwen."}},
+  {"@type":"Question","name":"Can it remove an object from a photo?","acceptedAnswer":{"@type":"Answer","text":"Yes. Select the object with a lasso, brush or magic wand, describe the change, and the AI local edit rebuilds only that area; pixels outside the selection are kept exactly as they were."}},
+  {"@type":"Question","name":"What Mac do I need?","acceptedAnswer":{"@type":"Answer","text":"A Mac with Apple Silicon (M1 or later). 32 GB of unified memory is recommended; the 4-bit model needs about 14 GB free while loading."}},
+  {"@type":"Question","name":"Which languages does it support?","acceptedAnswer":{"@type":"Answer","text":"The interface is in English or Chinese. Prompts can be written in English or Chinese."}}]}
+]}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap">
+  <a class="brand" href="./"><img class="mark" src="favicon.svg" width="32" height="32" alt="">Image MLX Lab</a>
+  <nav aria-label="Site">
+    <a href="#uses">What you can do</a><a href="#examples">Examples</a><a href="#how">How it works</a>
+    <a href="#private">Privacy</a><a href="#install">Install</a><a href="license.html">Licence</a>
+  </nav>
+</div></header>
+
+<main id="main">
+<div class="wrap">
+  <div class="hero">
+    <div class="eyebrow">Local AI image generator and editor · Apple Silicon Mac</div>
+    <h1>Change what you select.<br><em>Keep everything else.</em></h1>
+    <p class="lead">Image MLX Lab generates images from a prompt and edits the ones you have — remove an
+      object, swap a material, change a colour with a sentence. Draw a selection and only that
+      area changes; every pixel outside it stays exactly as it was. It all runs on your own Mac
+      with Qwen-Image on MLX. Nothing is uploaded.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/hera2019/image-mlx-lab">Get it on GitHub</a>
+      <a class="button ghost" href="#examples">See real results</a>
+      <span class="note">Free, open-source code (MIT) · default model for non-commercial use · macOS on Apple Silicon</span>
+    </div>
+  </div>
+  <figure class="shot"><img src="media/workbench-ai-local-edit-v1.jpg" width="1600" height="913" alt="The Image MLX Lab workbench: editing tools on the left, a photo with a lasso selection around a red waist bag in the centre, the image library on the right."></figure>
+  <figcaption>The workbench with an AI local edit ready to run: only the selected waist bag will change. The photo is a purpose-generated demo image.</figcaption>
+</div>
+
+<section id="uses"><div class="wrap">
+  <h2>What you can do with it</h2>
+  <p class="sub">Personal projects, experiments and learning — with pictures you would rather not send to a cloud service.</p>
+  <div class="grid">
+    <div class="card"><h3>Remove things from your photos</h3><p>Take out a bag, a cable, a sign or a passer-by and let the model rebuild what was behind it — the shirt hem, the wall, the floor — inside the area you selected.</p></div>
+    <div class="card"><h3>Try a colour or material first</h3><p>See a sofa in linen instead of wool, a jacket in navy instead of red, a wall in another colour — before you buy, sew or paint.</p></div>
+    <div class="card"><h3>Change a detail with words</h3><p>“Make the scarf deep blue.” True Edit follows an instruction on the whole image, with up to three extra reference pictures for identity, pose, clothes or style.</p></div>
+    <div class="card"><h3>Make new images</h3><p>Generate from a prompt in English or Chinese, including transparent PNGs for your own icons, stickers and mock-ups, or create variations of an image you have.</p></div>
+    <div class="card"><h3>Classic touch-ups, same place</h3><p>Healing brush for dust and spots, clone stamp, copy and paste between images, crop, resize, rotate, brightness, contrast and sharpness — no second app needed.</p></div>
+    <div class="card"><h3>Learn how local image models behave</h3><p>Compare 4-bit and 8-bit, steps and sizes on your own Mac. Every run records its time, memory and swap, so you can see what your machine can do.</p></div>
+  </div>
+  <p class="note spaced">The default model, Qwen-Image-2.1, is licensed for non-commercial research and evaluation. For commercial work you need a licence from Qwen — see <a href="license.html">Licence</a>.</p>
+</div></section>
+
+<section id="examples"><div class="wrap">
+  <h2>Real results</h2>
+  <p class="sub">Actual output of the local workflow on purpose-generated demo images — no private photos, nothing retouched afterwards.</p>
+  <div class="demos">
+    <figure><h3>Remove and rebuild</h3>
+      <p>The mask covers only the waist bag. The model rebuilds the shirt hem, jeans waist, button and stitching behind it; the rest of the picture is untouched.</p>
+      <div class="shot"><img src="media/demo-remove-v1.jpg" width="1600" height="900" loading="lazy" alt="Before, mask and after: a woman in a black T-shirt with a red waist bag; the mask covers the bag; after the edit the bag is gone and the shirt and jeans are rebuilt."></div></figure>
+    <figure><h3>Swap a material</h3>
+      <p>Backrest and seat from charcoal fabric to light beige linen; the walnut frame, floor and light stay as they were. Where the mask stops, the old fabric stays — the edges show exactly what was selected.</p>
+      <div class="shot"><img src="media/demo-material-v1.jpg" width="1600" height="900" loading="lazy" alt="Before, mask and after: an armchair with charcoal cushions; the mask covers backrest and seat; after the edit they are light beige linen."></div></figure>
+    <figure><h3>Recolour with an instruction</h3>
+      <p>True Edit, no mask: “change the red bandana to deep blue”. The dog, its pose, fur and the background keep their look.</p>
+      <div class="shot"><img src="media/demo-recolor-v1.jpg" width="1600" height="900" loading="lazy" alt="Before and after: a golden retriever wearing a red bandana, then the same dog with a deep blue bandana."></div></figure>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>How it works</h2>
+  <p class="sub">Four steps from a picture to an edited copy. The original is never overwritten unless you ask.</p>
+  <ol class="steps">
+    <li><h3>Open or generate an image</h3><p class="note">Load a PNG, JPG or WebP, or make one from a prompt. It appears in the library on the right.</p></li>
+    <li><h3>Select the area</h3><p class="note">Rectangle, ellipse, lasso, brush or magic wand; grow, shrink or feather the edge.</p></li>
+    <li><h3>Describe the change</h3><p class="note">The app sends a crop around your selection — plus a small view of the whole picture when context helps — to the local model.</p></li>
+    <li><h3>Check and keep</h3><p class="note">The result is blended back through your mask; outside it nothing may change. It is saved as a new image beside the original.</p></li>
+  </ol>
+</div></section>
+
+<section id="private"><div class="wrap">
+  <h2>Your pictures stay on your computer.</h2>
+  <p class="sub">Image MLX Lab is built for pictures you would not hand to an online service: photos of your family, your home, your unreleased work.</p>
+  <div class="grid two">
+    <div class="card"><h3>From first image to finished file</h3><p>The images you load, your selections, prompts and every result are stored in one folder of your copy on your Mac. Nothing is uploaded at any step.</p></div>
+    <div class="card"><h3>Local AI, not a cloud API</h3><p>Qwen-Image runs on your Mac's own chip through Apple's MLX. After setup no internet connection is needed to generate or edit.</p></div>
+    <div class="card"><h3>No account, no telemetry</h3><p>There is nothing to sign up for and nothing is reported back: no usage data, no analytics, no crash reports. We never see what you make.</p></div>
+    <div class="card"><h3>Closed to other devices and websites</h3><p>The workbench listens on this Mac only (127.0.0.1) and refuses requests from other web pages, so a site you visit cannot read or change your images.</p></div>
+  </div>
+  <p class="note">Details in the <a href="privacy.html">privacy</a> and <a href="security.html">security</a> pages. The only downloads are the model, the runtime and its tools during setup.</p>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <h2>What is in it</h2>
+  <p class="sub">A workbench for generating and editing, not a prompt box.</p>
+  <div class="grid">
+    <div class="card"><h3>AI local edit with a guarantee</h3><p>The source image and mask are frozen when you start. The model's output is composited through the full-size mask and checked: if any pixel outside the mask changed, the result is rejected.</p></div>
+    <div class="card"><h3>Context when it matters</h3><p>Small edits get a sharp local crop. Removals and repairs also get a view of the whole picture, so what the model rebuilds fits the scene.</p></div>
+    <div class="card"><h3>True Edit</h3><p>Instruction-based editing of the whole image, with up to three reference images, each marked as identity, pose, clothes, style or detail.</p></div>
+    <div class="card"><h3>Real selection tools</h3><p>Rectangle, ellipse, freehand lasso, brush, magic wand, invert, expand, contract and feather — the mask is also an ordinary selection for colour work.</p></div>
+    <div class="card"><h3>Non-destructive by default</h3><p>Undo and redo, “save as new” as the normal save, and a prompt before an unsaved draft is ever discarded.</p></div>
+    <div class="card"><h3>4-bit or 8-bit, your choice</h3><p>Pick the quantized model that fits your memory and switch in the app. The editing add-on (about 1.1 GB) is optional: install it only if you want True Edit and AI local edit.</p></div>
+    <div class="card"><h3>English and Chinese</h3><p>The interface is in English or Chinese; prompts work in either language.</p></div>
+    <div class="card"><h3>Open code, pinned versions</h3><p>MIT-licensed code, a pinned model revision and a pinned runtime commit, so a setup today behaves like a setup tomorrow.</p></div>
+  </div>
+  <figure class="shot spaced"><img src="media/workbench-text-to-image-v1.jpg" width="1600" height="913" loading="lazy" alt="The workbench in English, text to image mode: prompt and generation settings on the left, a golden retriever in the centre, the image library on the right."></figure>
+</div></section>
+
+<section id="honest"><div class="wrap">
+  <h2>What it does not do (yet)</h2>
+  <ul class="limits">
+    <li>It is not fast. On an M2 Max with 32 GB (8-bit model) a 512×512 image at 20 steps took about 1–1.5 minutes, an AI local edit at 480×640 and 20 steps about 5 minutes, and a True Edit at 1152×640 and 36 steps 11–17 minutes.</li>
+    <li>It needs an Apple Silicon Mac. 32 GB of memory is recommended; the 4-bit model needs about 14 GB free while loading, and the 8-bit model on 32 GB usually needs the memory check skipped, with heavy swap.</li>
+    <li>It is a developer install for now: Xcode with its Metal toolchain, a terminal, and 12–20 GB of downloads. There is no signed installer.</li>
+    <li>Edits are not always clean. A mask that stops short leaves the old surface at its edge, and some removals show a seam; check every result before you use it.</li>
+    <li>The quantized MLX models are not identical to the official full-precision Qwen-Image-2.1, and the default model is for non-commercial use only.</li>
+  </ul>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <h2>Install</h2>
+  <p class="sub">On an Apple Silicon Mac with Xcode 26.2+ (with the Metal toolchain) and <a href="https://brew.sh">Homebrew</a>:</p>
+  <pre class="card code">brew install cmake
+git clone https://github.com/hera2019/image-mlx-lab.git &amp;&amp; cd image-mlx-lab
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python scripts/setup_model.py --model qwen-image-2.1-mlx-4bit
+open Start-Image-MLX-Lab.command</pre>
+  <p class="note">Setup downloads the model (about 10 GB for 4-bit, 17.6 GB for 8-bit), asks whether to add the optional editing module (about 1.1 GB), and builds the pinned runtime. The <a href="https://github.com/hera2019/image-mlx-lab/blob/main/docs/USER_GUIDE_EN.md">user guide</a> covers every step. The model is downloaded from its publishers under its own licence.</p>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2>Questions</h2>
+  <div class="grid">
+    <div class="card"><h3>Does it upload my images?</h3><p>No. The model runs on your Mac; images, masks, prompts and results stay in a folder on your computer. No account, no cloud, no telemetry.</p></div>
+    <div class="card"><h3>Is it free? Can I use it commercially?</h3><p>The code is free under the MIT License. The default Qwen-Image-2.1 model is licensed for non-commercial research and evaluation only; commercial use needs a licence from Qwen. <a href="license.html">Details</a>.</p></div>
+    <div class="card"><h3>Can it remove an object from a photo?</h3><p>Yes: select it, describe the change, and the AI local edit rebuilds only that area. Pixels outside the selection are kept exactly.</p></div>
+    <div class="card"><h3>Can I edit photos of other people?</h3><p>Only in ways they would agree to, and never to make sexual, deceptive or humiliating images of anyone. See <a href="responsible-use.html">responsible use</a>.</p></div>
+    <div class="card"><h3>What Mac do I need?</h3><p>Apple Silicon (M1 or later). 32 GB of memory is recommended; the 4-bit model needs about 14 GB free while loading.</p></div>
+    <div class="card"><h3>Which languages?</h3><p>An English or Chinese interface; prompts in English or Chinese.</p></div>
+  </div>
+</div></section>
+
+<section id="licence"><div class="wrap">
+  <h2>Licence</h2>
+  <p class="sub">Two licences apply. The Image MLX Lab code is free and open source under the <a href="license.html">MIT License</a> — © 2026 Houjun Co., Ltd. The default <strong>Qwen-Image-2.1 model</strong> is not ours: it comes under the Qwen Research License, which allows non-commercial research and evaluation only. The model is not included; you download it during setup.</p>
+  <div class="callout"><strong>Responsible use.</strong> Obey the laws where you are and respect other people's privacy, likeness and rights in their pictures. Do not use Image MLX Lab for sexual content involving minors, intimate or sexual images of anyone without their consent, fake images meant to deceive or impersonate, harassment, extortion or anything else unlawful. <a href="responsible-use.html">Read more</a>.</div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span>© 2026 Houjun Co., Ltd.</span>
+  <nav aria-label="Legal">
+    <a href="responsible-use.html">Responsible use</a><a href="privacy.html">Privacy</a>
+    <a href="terms.html">Terms</a><a href="security.html">Security</a><a href="license.html">Licence</a>
+  </nav>
+  <span class="legal"><a href="mailto:support@houjun.dev">support@houjun.dev</a></span>
+</div></footer>
+</body>
+</html>

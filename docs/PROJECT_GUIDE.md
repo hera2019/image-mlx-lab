@@ -131,3 +131,13 @@ If architecture, safety boundaries, result directories, runtime assumptions, or 
 - Clone Stamp samples with Option/Alt-click and paints from a frozen stroke-start source so the sample does not recursively contaminate itself during one stroke.
 - Spot Healing is intended for small dust, spots, and scratches. It fills only the painted repair mask from surrounding pixels; complex texture or large missing regions should use Clone Stamp or AI local edit instead.
 - Clone/Healing pixel edits must participate in normal Undo/Redo and unsaved-draft protection.
+
+## Website (`site/` → https://houjun.dev/iml/)
+
+- Static English site modelled on the VoxStage site (`/voxstage/`): plain HTML and one stylesheet, no scripts (the JSON-LD block is data), no third-party resources, no cookies, no forms.
+- Keep the three `.htaccess` files: the root one sets the security headers (strict CSP with `script-src 'none'`, HSTS, nosniff, frame and referrer policy), caching, blocks internal file types and dot files, and serves `404.html`; `media/.htaccess` serves only images; `.well-known/.htaccess` serves only `security.txt`. A subdirectory with its own `.htaccess` does not inherit the parent's rewrite rules — repeat the protections there.
+- Every public statement must keep the two licences apart: the code is MIT (© Houjun Co., Ltd.); the default Qwen-Image-2.1 model is under the Qwen Research License (non-commercial research / evaluation). Use cases must stay non-commercial in framing; never imply the app can be used commercially with the default model.
+- Responsible-use rules (photos of real people, consent, no sexualised or deceptive images, disclosure, model licence) appear on every page footer link and in both READMEs; the app adds no watermark, so never claim it does.
+- Only state measured facts (speeds come from the performance log of the test machine). Update the "Last updated" dates when a page changes.
+- Site images live in `site/media/`, are listed in `docs/images/APPROVED.txt` by path, carry no EXIF / Photoshop metadata, and are never replaced under the same name (`…-v2.jpg`).
+- Deploy per `site/README.md` (rsync dry run first, `--delete-after`); deploying is an outward action and needs the user's go-ahead.

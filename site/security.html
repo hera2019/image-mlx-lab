@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security · Image MLX Lab</title>
+<meta name="description" content="How Image MLX Lab keeps your images safe on your Mac, and how to report a security problem.">
+<link rel="canonical" href="https://houjun.dev/iml/security.html">
+<meta name="theme-color" content="#132a52">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap">
+  <a class="brand" href="./"><img class="mark" src="favicon.svg" width="32" height="32" alt="">Image MLX Lab</a>
+  <nav aria-label="Site"><a href="./">Home</a><a href="security.html" aria-current="page">Security</a><a href="privacy.html">Privacy</a></nav>
+</div></header>
+<main id="main" class="wrap doc">
+  <div class="eyebrow">Security</div>
+  <h1>Security</h1>
+
+  <h2>Report a problem</h2>
+  <p>Found a vulnerability? Please write to
+    <a href="mailto:support@houjun.dev?subject=Image%20MLX%20Lab%20security">support@houjun.dev</a>
+    with the subject “Image MLX Lab security” before telling anyone else, and do not open a public
+    issue for it. Say what you found, how to reproduce it and which version (commit) you used. We will
+    acknowledge your report, keep you informed, and credit you when it is fixed if you wish. There is
+    no bug bounty.</p>
+  <p>Machine-readable contact: <a href=".well-known/security.txt">security.txt</a>; this page is the
+    policy it points to.</p>
+
+  <h2>How Image MLX Lab is built to be safe</h2>
+  <ul>
+    <li><strong>This Mac only.</strong> The workbench (127.0.0.1:18080) and the model server
+      (127.0.0.1:11234) listen on the local machine only. There is no network access mode.</li>
+    <li><strong>Other websites cannot drive it.</strong> The workbench accepts changes only as JSON
+      from its own page: requests from other origins and cross-site requests are refused, and it adds
+      no CORS headers. Requests naming any other host are refused, which blocks DNS-rebinding
+      attacks.</li>
+    <li><strong>Only what the page needs is served.</strong> The interface files and the images in your
+      library — not the project folder, its Git data, logs, settings or performance records.</li>
+    <li><strong>Files stay in their place.</strong> Deleting or overwriting is allowed only for images
+      directly inside the workbench's own library folders; any other path is refused.</li>
+    <li><strong>The mask is enforced in code.</strong> An AI local edit is composited through the
+      frozen full-size mask and rejected if any pixel outside the mask changed.</li>
+    <li><strong>Pinned versions.</strong> Setup downloads the model at a fixed revision and builds the
+      runtime from a fixed commit, then applies the project's patch only if it matches exactly.</li>
+    <li><strong>Nothing private is published.</strong> A release check refuses to publish working
+      images, logs or local paths; only reviewed demo images are allowed into the repository.</li>
+  </ul>
+
+  <h2>This website</h2>
+  <p>Static pages over HTTPS with a strict content security policy: no scripts, no third-party
+    resources, no cookies.</p>
+  <p class="updated">Last updated 28 September 2026.</p>
+</main>
+<footer><div class="wrap">
+  <span>© 2026 Houjun Co., Ltd.</span>
+  <nav aria-label="Legal"><a href="responsible-use.html">Responsible use</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="security.html">Security</a><a href="license.html">Licence</a></nav>
+  <span class="legal"><a href="mailto:support@houjun.dev">support@houjun.dev</a></span>
+</div></footer>
+</body>
+</html>

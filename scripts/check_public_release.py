@@ -56,26 +56,30 @@ def history_paths() -> list[str]:
         return []
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
-# Public screenshots / demo images live only in docs/images/ and must each be listed (one file
-# name per line) in docs/images/APPROVED.txt after a human has checked them. Everything else,
-# and anything under results/, stays blocked.
+# Public screenshots / demo images live only directly inside docs/images/ (documentation) or
+# site/media/ (the website) and must each be listed in docs/images/APPROVED.txt after a human
+# has checked them: a bare file name means docs/images/<name>; site images are listed by path
+# ("site/media/<name>"). Everything else, and anything under results/, stays blocked.
 PUBLIC_IMAGE_DIR = "docs/images"
+PUBLIC_IMAGE_DIRS = (PUBLIC_IMAGE_DIR, "site/media")
 APPROVED_LIST = ROOT / PUBLIC_IMAGE_DIR / "APPROVED.txt"
 SELF = "scripts/check_public_release.py"
 
 def approved_images() -> set[str]:
+    """Approved images as repo-relative paths."""
     try:
         lines = APPROVED_LIST.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         return set()
-    return {l.strip() for l in lines if l.strip() and not l.lstrip().startswith("#")}
+    entries = {l.strip() for l in lines if l.strip() and not l.lstrip().startswith("#")}
+    return {e if "/" in e else f"{PUBLIC_IMAGE_DIR}/{e}" for e in entries}
 
 def image_reason(rel: Path, approved: set[str]) -> str | None:
     if rel.suffix.lower() not in IMAGE_SUFFIXES:
         return None
-    if rel.parent.as_posix() == PUBLIC_IMAGE_DIR and rel.name in approved:
+    if rel.parent.as_posix() in PUBLIC_IMAGE_DIRS and rel.as_posix() in approved:
         return None
-    return "REVIEW IMAGE (only approved files in docs/images/ may be public)"
+    return "REVIEW IMAGE (only approved files in docs/images/ or site/media/ may be public)"
 
 def forbidden_reason(rel: Path, approved: set[str]) -> str | None:
     if set(rel.parts) & FORBIDDEN_PARTS:
@@ -111,11 +115,10 @@ def history_text_problems() -> list[str]:
 def approved_image_history_problems(approved: set[str]) -> list[str]:
     """Approved public image names are immutable; replacing one leaves the old blob in Git history."""
     problems: list[str] = []
-    for name in sorted(approved):
-        if Path(name).name != name:
-            problems.append(f"INVALID APPROVED IMAGE NAME: {name}")
+    for rel in sorted(approved):
+        if Path(rel).parent.as_posix() not in PUBLIC_IMAGE_DIRS:
+            problems.append(f"INVALID APPROVED IMAGE PATH: {rel}")
             continue
-        rel = f"{PUBLIC_IMAGE_DIR}/{name}"
         current = ROOT / rel
         if not current.is_file():
             problems.append(f"APPROVED IMAGE MISSING: {rel}")

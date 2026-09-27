@@ -1,0 +1,24 @@
+# /iml/media/ — the site's images, nothing else.
+# Security headers (nosniff, CSP, HSTS…) are inherited from /iml/.htaccess;
+# rewrite rules are not, so the protections are repeated here (as in /voxstage/media/).
+Options -Indexes
+
+<IfModule mod_headers.c>
+  # Stable files: a changed image gets a new file name (…-v2.jpg).
+  <FilesMatch "\.(jpe?g|png|webp)$">
+    Header always set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /iml/media/
+
+  # Dot files (.DS_Store and the like).
+  RewriteRule (^|/)\. - [F,L]
+
+  # Only the kinds of file the pages use; anything else uploaded here by
+  # mistake is refused.
+  RewriteCond %{REQUEST_URI} !\.(jpe?g|png|webp)$ [NC]
+  RewriteRule ^ - [F,L]
+</IfModule>

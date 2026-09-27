@@ -1,47 +1,98 @@
 # Image MLX Lab
 
-**English** | [中文](README_ZH.md)
+**Local AI image generator and editor for Mac.** Generate images from a prompt and edit the
+ones you have — remove an object, swap a material, change a colour with a sentence — with
+mask-based AI inpainting that keeps every pixel outside your selection unchanged. Runs
+entirely on Apple Silicon with Qwen-Image on MLX. Free, open-source code.
+
+**Website: <https://houjun.dev/iml/>** · *[中文说明](README_ZH.md)* ·
+[User guide](docs/USER_GUIDE_EN.md)
 
 <img src="assets/image-mlx-lab-icon.svg" width="80" alt="Image MLX Lab icon">
 
-> Project-wide agent/development rules: `docs/PROJECT_GUIDE.md`
+A local image generation and AI-assisted editing workbench for Apple Silicon Macs: text to
+image, image variations, instruction-based editing (True Edit) and AI local edit on a
+selected mask, next to ordinary editing tools — selections, healing, clone stamp, copy and
+paste, crop, colour. The backend today is Qwen-Image-2.1 on MLX; the project name stays
+model-agnostic so other MLX image models can be added later.
 
-Image MLX Lab is a local image generation and AI-assisted editing workbench for Apple Silicon / MLX. The current backend is Qwen-Image-2.1, while the project name intentionally stays model-agnostic so other MLX image models can be added later.
-
-All generation and editing run locally. Images, prompts, and results are not sent to a remote service by Image MLX Lab. The web UI listens on `127.0.0.1` only, so it is not exposed to other devices on the LAN by default.
-
-Primary test machine: Apple M2 Max with 32 GB unified memory.
-
-## Demos and documentation
-
-[English User Guide](docs/USER_GUIDE_EN.md) · [中文使用说明](docs/USER_GUIDE_ZH.md)
+> **Development preview.** The workflow runs end to end on the test machine (M2 Max,
+> 32 GB). It is a developer install, it is not fast, and the default model is for
+> non-commercial use — see [Limits](#limits) and [Licenses](#licenses).
 
 ![Image MLX Lab real editing results](docs/images/showcase-overview-en-v1.png)
 
-The examples above use purpose-generated demo assets and were produced through the actual Qwen workflow.
+*Actual output of the local workflow on purpose-generated demo images — no private photos,
+nothing retouched afterwards.*
 
-- **AI Local Edit**: edit only the Mask region; pixels outside the Mask are protected by the final full-size compositing step.
-- **Remove and reconstruct**: remove an obstruction and reconstruct hidden structure.
-- **Local material swap**: change material and color only inside the selected area.
-- **True Edit**: make explicit object or attribute changes with natural-language instructions.
-- Text to Image, Image to Image, selections, healing, clone stamp, copy/paste, color adjustments, crop, resize, rotate, and more.
+---
+
+## What you can do with it
+
+Personal projects, experiments and learning — with pictures you would rather not send to a
+cloud service.
+
+- **Remove things from your photos** — take out a bag, a cable, a sign or a passer-by and let
+  the model rebuild what was behind it, inside the area you selected.
+- **Try a colour or material first** — a sofa in linen instead of wool, a jacket in navy
+  instead of red, a wall in another colour, before you buy, sew or paint.
+- **Change a detail with words** — “make the scarf deep blue”: True Edit follows an
+  instruction on the whole image, with up to three reference pictures for identity, pose,
+  clothes or style.
+- **Make new images** — from a prompt in English or Chinese, including transparent PNGs for
+  your own icons, stickers and mock-ups, or variations of an image you have.
+- **Classic touch-ups in the same place** — healing brush, clone stamp, copy and paste between
+  images, crop, resize, rotate, brightness, contrast and sharpness.
+- **Learn how local image models behave** — compare 4-bit and 8-bit, steps and sizes on your
+  own Mac; every run records its time, memory and swap.
+
+The default model, Qwen-Image-2.1, is licensed for non-commercial research and evaluation.
+For commercial work you need a licence from Qwen — see [Licenses](#licenses).
+
+## Your pictures stay on your computer
+
+Image MLX Lab is built for pictures you would not hand to an online service: photos of your
+family, your home, your unreleased work.
+
+- **From first image to finished file**, the images you load, your selections, prompts and
+  every result are stored in the `results/` folder of your copy. Nothing is uploaded at any
+  step.
+- **Local AI, not a cloud API.** Qwen-Image runs on your Mac's own chip through Apple's MLX.
+  After setup, generating and editing need no internet connection.
+- **No account, no telemetry.** Nothing to sign up for, nothing reported back: no usage data,
+  no analytics, no crash reports.
+- **Closed to other devices and websites.** The workbench and the model server listen on this
+  Mac only (`127.0.0.1`); the workbench refuses requests from other web pages, so a site you
+  visit cannot read or change your images.
 
 ## Responsible use
 
-Follow applicable law and respect privacy, likeness rights, and other legitimate rights.
-
-Do not use this tool to create sexual content involving minors, non-consensual intimate or sexual imagery, fraudulent impersonation, harassment, extortion, or other unlawful content. You are responsible for ensuring that your use and generated / edited content comply with applicable law, platform rules, and model licenses.
+Obey the laws where you are and respect other people's privacy, likeness and rights in their
+pictures. Do not use Image MLX Lab to make sexual content involving minors, intimate or sexual
+images of anyone without their consent, fake images meant to deceive or to impersonate someone,
+harassment, extortion, or anything else unlawful. Edit photos of real people only in ways they
+would agree to, and say so when you publish an image you made or substantially changed with AI —
+the app adds no watermark. You are responsible for how you use the software and the model, and
+for everything you generate or edit. Full rules: <https://houjun.dev/iml/responsible-use.html>.
 
 ## Licenses
 
 Code and model weights have different licenses:
 
-- **Image MLX Lab source code** is released under the [MIT License](LICENSE), © 2026 Houjun Co., Ltd.
-- The default **Qwen-Image-2.1 model** is governed by the [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE). It is limited to non-commercial research / evaluation unless you obtain separate commercial permission from the model provider. Model weights are not included in this repository.
-- The runtime [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve) uses MIT / Apache-2.0. This repository ships only a patch that is applied during setup.
-- You are responsible for how generated and edited content is used and for compliance with the model license.
+| Part | License | Commercial use |
+| --- | --- | --- |
+| Image MLX Lab source code | [MIT License](LICENSE), © 2026 Houjun Co., Ltd. | Allowed |
+| Qwen-Image-2.1 model (default, downloaded separately) | [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE) | Not without a licence from Qwen |
+| [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve) runtime (built during setup) | MIT / Apache-2.0 | Allowed, under its terms |
 
-See [NOTICE](NOTICE) for details.
+- Model weights are not included in this repository. This repository ships only a patch for
+  mlx-serve, applied during setup.
+- In practice, using Image MLX Lab with its default model is non-commercial unless you obtain
+  a commercial licence from Qwen.
+- You are responsible for how generated and edited content is used and for compliance with the
+  model license.
+
+See [NOTICE](NOTICE) and <https://houjun.dev/iml/license.html>.
 
 ## Requirements
 
@@ -191,6 +242,24 @@ The entire `results/` directory is ignored by Git and stays local:
 
 Model logs are stored at `~/.mlx-serve/logs/image-mlx-lab-model.log`.
 
-## Current test boundary
+## Limits
 
-The quantized packages are primarily validated for practical use on Apple Silicon. Qwen-Image-2.1 also supports capabilities in its official BF16 path; results from the quantized MLX workflow should not be treated as a substitute for conclusions about the official BF16 implementation.
+- **It is not fast.** On an M2 Max with 32 GB (8-bit model) a 512×512 image at 20 steps took
+  about 1–1.5 minutes, an AI local edit at 480×640 and 20 steps about 5 minutes, and a True
+  Edit at 1152×640 and 36 steps 11–17 minutes.
+- **Apple Silicon only**, 32 GB recommended; see [Requirements](#requirements).
+- **A developer install**: Xcode with the Metal toolchain, a terminal and 12–20 GB of
+  downloads. There is no signed installer.
+- **Edits are not always clean.** A mask that stops short leaves the old surface at its edge,
+  and some removals show a seam; check every result.
+- **Quantized, not official.** The quantized MLX packages are primarily validated for practical
+  use on Apple Silicon. Results from this workflow are not a substitute for conclusions about
+  the official full-precision (BF16) Qwen-Image-2.1.
+
+## For contributors
+
+Project-wide development and safety rules for humans and coding agents:
+[`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md). Before publishing anything, run
+`python3 scripts/check_public_release.py` and read [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md).
+The website lives in [`site/`](site/README.md). Security reports: support@houjun.dev
+(see <https://houjun.dev/iml/security.html>), not a public issue.

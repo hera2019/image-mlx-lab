@@ -18,3 +18,12 @@ showcase-overview-en-v1.png
 showcase-local-remove-en-v1.png
 showcase-local-material-en-v1.png
 showcase-true-edit-color-en-v1.png
+
+# Website images (https://houjun.dev/iml/), listed by path. JPEG copies of the approved
+# English images above, metadata stripped; og-card is cropped from the English overview.
+site/media/workbench-ai-local-edit-v1.jpg
+site/media/workbench-text-to-image-v1.jpg
+site/media/demo-remove-v1.jpg
+site/media/demo-material-v1.jpg
+site/media/demo-recolor-v1.jpg
+site/media/og-card-v1.jpg

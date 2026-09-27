@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Image MLX Lab</title>
+<meta name="description" content="Image MLX Lab runs on your Mac: no account, no telemetry, nothing uploaded. This site sets no cookies and runs no analytics.">
+<link rel="canonical" href="https://houjun.dev/iml/privacy.html">
+<meta name="theme-color" content="#132a52">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap">
+  <a class="brand" href="./"><img class="mark" src="favicon.svg" width="32" height="32" alt="">Image MLX Lab</a>
+  <nav aria-label="Site"><a href="./">Home</a><a href="privacy.html" aria-current="page">Privacy</a><a href="security.html">Security</a></nav>
+</div></header>
+<main id="main" class="wrap doc">
+  <div class="eyebrow">Privacy</div>
+  <h1>Your pictures stay on your Mac</h1>
+
+  <h2>The Image MLX Lab software</h2>
+  <ul>
+    <li><strong>No account, no telemetry.</strong> Image MLX Lab does not collect usage data, crash
+      reports or analytics, and has nowhere to send them.</li>
+    <li><strong>Nothing is uploaded.</strong> Images you load, your selections, prompts, generated and
+      edited images are stored in the <code>results</code> folder of your copy and never leave the Mac
+      unless you move them. The model runs locally through MLX.</li>
+    <li><strong>What is recorded locally:</strong> for each run, the time it took, memory and swap use,
+      the image size and settings, and the beginning of the prompt are written to
+      <code>results/performance/</code>. It stays on your Mac; delete it whenever you like.</li>
+    <li><strong>What does use the network:</strong> setup downloads the model and the optional editing
+      module from Hugging Face, the mlx-serve runtime and its build tools from GitHub, and Python
+      packages. After setup, generating and editing need no internet connection.</li>
+    <li><strong>Not on your network.</strong> The workbench and the model server listen on this Mac
+      only (127.0.0.1). Other devices on your Wi-Fi cannot reach them, and other websites cannot
+      use them through your browser.</li>
+    <li><strong>Your browser</strong> keeps only your choice of interface language, locally.</li>
+  </ul>
+
+  <h2>This website</h2>
+  <ul>
+    <li>It is a set of static pages: no cookies, no analytics, no tracking pixels, no forms and no
+      third-party scripts or fonts.</li>
+    <li>Our web host keeps standard server logs (such as IP address, time and page requested) for
+      security and operation, under its own policy.</li>
+    <li>If you write to us, we use your email only to answer you.</li>
+  </ul>
+
+  <h2>Questions</h2>
+  <p>Write to <a href="mailto:support@houjun.dev?subject=Image%20MLX%20Lab%20privacy">support@houjun.dev</a>.</p>
+  <p class="updated">Last updated 28 September 2026.</p>
+</main>
+<footer><div class="wrap">
+  <span>© 2026 Houjun Co., Ltd.</span>
+  <nav aria-label="Legal"><a href="responsible-use.html">Responsible use</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="security.html">Security</a><a href="license.html">Licence</a></nav>
+  <span class="legal"><a href="mailto:support@houjun.dev">support@houjun.dev</a></span>
+</div></footer>
+</body>
+</html>

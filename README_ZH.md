@@ -1,49 +1,77 @@
 # Image MLX Lab
 
-[English](README.md) | **中文**
+**Mac 本地 AI 绘图与修图工具。** 用提示词生成图片，也能修改已有图片：去掉物体、替换材质、一句话改颜色。
+AI 局部编辑只改你选中的区域，选区外的每个像素都保持原样。全部在 Apple Silicon 上用 Qwen-Image + MLX
+本地运行。代码免费开源。
+
+**官网：<https://houjun.dev/iml/>** · *[English](README.md)* ·
+[中文使用说明](docs/USER_GUIDE_ZH.md)
 
 <img src="assets/image-mlx-lab-icon.svg" width="80" alt="Image MLX Lab icon">
 
-> Project-wide agent/development rules: `docs/PROJECT_GUIDE.md`
+面向 Apple Silicon Mac 的本地图像生成与 AI 编辑工作台：文生图、图生图、指令编辑（True Edit）、
+按选区（Mask）做 AI 局部编辑，外加常用修图工具——选区、修复画笔、克隆图章、复制粘贴、裁剪、调色。
+当前后端是 MLX 上的 Qwen-Image-2.1；项目名不绑定具体模型，以后可以接入其他 MLX 图像模型。
 
-Image MLX Lab 是一个面向 Apple Silicon / MLX 的本地图像生成与编辑研究工作台。当前后端是 Qwen-Image-2.1；项目命名不绑定具体模型，后续可以继续接入其他 MLX 图像模型。
-
-所有计算都在本机完成：图片、提示词和结果不会上传到任何服务器；网页界面只监听 `127.0.0.1`，局域网里的其他设备无法访问。
-
-当前主要测试机器：Apple M2 Max，32 GB 统一内存。
-
-## 效果与使用说明
-
-[English User Guide](docs/USER_GUIDE_EN.md) · 中文完整使用说明：[docs/USER_GUIDE_ZH.md](docs/USER_GUIDE_ZH.md)
+> **开发预览版。** 完整流程在测试机（M2 Max，32 GB）上可以跑通。目前需要开发者方式安装，速度不快，
+> 默认模型仅限非商业用途——见[限制](#限制)和[许可证](#许可证)。
 
 ![Image MLX Lab 真实编辑效果](docs/images/showcase-overview-zh-v1.png)
 
-上图全部使用专门生成的演示素材，并通过实际 Qwen 工作流完成。当前重点能力包括：
+*本地工作流的真实输出，素材是专门生成的演示图——没有私人照片，事后没有修饰。*
 
-- **AI 局部编辑**：只修改 Mask 内区域，Mask 外像素保持原图不变；
-- **遮挡移除与结构重建**：例如去掉腰包后恢复被遮挡的衣摆、裤腰和细节；
-- **局部材质替换**：只替换指定区域的材质与颜色；
-- **指令编辑（True Edit）**：用自然语言完成明确的对象 / 属性修改；
-- 文生图、图生图、选区、修复、克隆、复制粘贴、调色、裁剪等普通工作台能力。
+---
 
-公开截图和演示图只使用专门生成并人工检查过的素材，不直接使用 `results/` 中的私人图片或测试结果。
+## 可以用它做什么
+
+个人项目、实验和学习——处理那些你不想交给云服务的图片。
+
+- **去掉照片里多余的东西**——拿掉包、电线、招牌或路人，让模型在你选中的范围里补出后面原本的样子。
+- **先试颜色和材质**——沙发换成亚麻、外套换成藏青、墙换个颜色，买之前、做之前先看看效果。
+- **一句话改细节**——“把围巾改成深蓝色”：指令编辑按文字修改整张图，还能附加最多 3 张参考图，
+  指定身份、姿态、服装或风格。
+- **生成新图片**——用中文或英文提示词生成，也可以生成透明背景 PNG，做自己的图标、贴纸和样稿；
+  或者根据已有图片生成变体。
+- **常用修图在同一处完成**——修复画笔、克隆图章、跨图片复制粘贴、裁剪、缩放、旋转、亮度、对比度、锐化。
+- **了解本地图像模型的表现**——在自己的 Mac 上比较 4-bit 和 8-bit、步数和尺寸；每次运行都会记录耗时、
+  内存和 swap。
+
+默认模型 Qwen-Image-2.1 的许可证只允许非商业的研究和评估。商业用途需要取得 Qwen 的许可——见[许可证](#许可证)。
+
+## 图片始终留在你的电脑上
+
+Image MLX Lab 就是为那些不想交给在线服务的图片做的：家人的照片、自己的家、还没发布的作品。
+
+- **从第一张图到最终文件**，载入的图片、选区、提示词和所有结果，都保存在你这份程序的 `results/` 文件夹里。
+  任何一步都不会上传。
+- **本地 AI，不是云端 API。** Qwen-Image 通过 Apple 的 MLX 在 Mac 自己的芯片上运行。安装完成后，
+  生成和编辑都不需要联网。
+- **没有账号，没有遥测。** 不用注册，也不回传任何东西：没有使用数据、没有统计分析、没有崩溃报告。
+- **其他设备和网站都访问不到。** 工作台和模型服务只监听本机（`127.0.0.1`）；工作台会拒绝来自其他网页的请求，
+  你浏览的网站无法读取或修改你的图片。
 
 ## 使用规范
 
-请遵守当地法律，并尊重他人的隐私、肖像权和其他合法权益。
-
-不得将本工具用于制作涉及未成年人的色情内容、未经本人同意的私密或色情影像、欺诈性冒充、骚扰、勒索或其他违法用途。使用者应自行确认其使用方式及生成 / 编辑内容符合适用法律、平台规则和模型许可证。
+请遵守当地法律，尊重他人的隐私、肖像权和对其图片的权利。不得用 Image MLX Lab 制作涉及未成年人的色情内容、
+未经本人同意的私密或色情图片、用于欺骗或冒充他人的假图片，也不得用于骚扰、勒索或其他违法用途。
+编辑真人照片时，只做对方会同意的修改；公开发布用 AI 生成或大幅修改的图片时请注明——本软件不会添加水印。
+你要对自己如何使用本软件和模型、以及生成或编辑的全部内容负责。完整规范：<https://houjun.dev/iml/responsible-use.html>。
 
 ## 许可证
 
 代码和模型适用不同的许可证：
 
-- **Image MLX Lab 源代码**采用 [MIT License](LICENSE)，© 2026 Houjun Co., Ltd.。
-- **默认使用的 Qwen-Image-2.1 模型**受 [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE) 限制，**仅限非商业的研究和评估用途**；商业使用该模型需要另行取得 Qwen 的许可。模型权重不包含在本仓库中，需要自行下载。
-- 运行时 [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve) 采用 MIT / Apache-2.0，本仓库只附带一个补丁，安装时自动应用。
-- 用模型生成、编辑出来的内容由使用者自行负责，并受模型许可证约束。
+| 部分 | 许可证 | 商业使用 |
+| --- | --- | --- |
+| Image MLX Lab 源代码 | [MIT License](LICENSE)，© 2026 Houjun Co., Ltd. | 允许 |
+| Qwen-Image-2.1 模型（默认，需另行下载） | [Qwen Research License](https://github.com/QwenLM/Qwen-Image-2.1/blob/main/LICENSE) | 未取得 Qwen 许可时不允许 |
+| 运行时 [ddalcu/mlx-serve](https://github.com/ddalcu/mlx-serve)（安装时编译） | MIT / Apache-2.0 | 按其条款允许 |
 
-详见 [NOTICE](NOTICE)。
+- 模型权重不包含在本仓库中。本仓库只附带一个 mlx-serve 补丁，安装时自动应用。
+- 实际上，用默认模型使用 Image MLX Lab 属于非商业用途，除非你另行取得 Qwen 的商业许可。
+- 生成和编辑内容的使用方式、以及是否符合模型许可证，由使用者自行负责。
+
+详见 [NOTICE](NOTICE) 和 <https://houjun.dev/iml/license.html>。
 
 ## 需要准备
 
@@ -164,7 +192,19 @@ runtime 目前仍是未正式发布的 Qwen-Image-2.1 feature branch，所以同
 
 模型日志在 `~/.mlx-serve/logs/image-mlx-lab-model.log`。
 
-## 当前测试边界
+## 限制
 
-量化包主要用于 Apple Silicon 上的可用性验证。Qwen-Image-2.1 官方模型还支持原生透明图和多参考图编辑，
-但这些能力不应直接用量化包的结果代替官方 BF16 路径的结论。
+- **速度不快。** 在 M2 Max、32 GB、8-bit 模型上：512×512、20 步的文生图约 1–1.5 分钟；
+  480×640、20 步的 AI 局部编辑约 5 分钟；1152×640、36 步的指令编辑约 11–17 分钟。
+- **只支持 Apple Silicon**，建议 32 GB 内存；见[需要准备](#需要准备)。
+- **需要开发者方式安装**：Xcode 和 Metal Toolchain、终端，以及 12–20 GB 的下载。目前没有签名安装包。
+- **编辑结果不一定干净。** 选区没盖到的边缘会留下原来的表面，有些移除会留下接缝；每个结果都要自己检查。
+- **量化版，不是官方版。** 量化的 MLX 包主要验证在 Apple Silicon 上的实用性，结果不能代替对官方全精度（BF16）
+  Qwen-Image-2.1 的结论。
+
+## 参与开发
+
+面向开发者和编程助手的项目规则与安全要求：[`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md)。
+发布任何内容前，先运行 `python3 scripts/check_public_release.py` 并阅读 [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md)。
+官网源码在 [`site/`](site/README.md)。安全问题请发邮件到 support@houjun.dev
+（见 <https://houjun.dev/iml/security.html>），不要公开提 issue。

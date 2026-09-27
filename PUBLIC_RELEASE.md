@@ -11,7 +11,7 @@ Before creating or pushing the public GitHub repository:
 - Local logs, caches, temporary files and `.env*`.
 
 ## Public images (screenshots, demo pictures)
-- Put them only in `docs/images/` and list each file name in `docs/images/APPROVED.txt` after checking it by eye.
+- Put them only in `docs/images/` (documentation) or `site/media/` (website) and list each one in `docs/images/APPROVED.txt` after checking it by eye — a bare file name for `docs/images/`, the path `site/media/<name>` for the website.
 - Never copy anything from `results/`; generate dedicated demo images from neutral prompts instead.
 - No personal photos, user names, local paths, other apps' windows or notifications visible; strip EXIF / GPS metadata.
 - Any image outside `docs/images/`, or not listed in `APPROVED.txt`, fails the release check.
