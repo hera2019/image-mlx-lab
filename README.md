@@ -16,9 +16,13 @@ selected mask, next to ordinary editing tools — selections, healing, clone sta
 paste, crop, colour. The backend today is Qwen-Image-2.1 on MLX; the project name stays
 model-agnostic so other MLX image models can be added later.
 
-> **Development preview.** The workflow runs end to end on the test machine (M2 Max,
-> 32 GB). It is a developer install, it is not fast, and the default model is for
-> non-commercial use — see [Limits](#limits) and [Licenses](#licenses).
+> **Image MLX Lab 1.0.** The whole workflow — text to image, variations, True Edit,
+> AI local edit, the editing tools, 4-bit / 8-bit model management and the Chinese /
+> English interface — is complete and runs end to end. Installation has so far been
+> verified on the development Mac only (M2 Max, 32 GB); if the setup fails on yours,
+> please [open an issue](https://github.com/hera2019/image-mlx-lab/issues). It is a
+> developer install, it is not fast, and the default model is for non-commercial use —
+> see [Limits](#limits) and [Licenses](#licenses).
 
 ![Image MLX Lab real editing results](docs/images/showcase-overview-en-v1.png)
 

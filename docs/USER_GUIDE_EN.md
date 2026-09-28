@@ -2,7 +2,7 @@
 
 **English** | [中文](USER_GUIDE_ZH.md)
 
-> Version: v0.1 · 2026-09-25  
+> Version: 1.0 · 2026-09-28  
 > Applies to the current bilingual web UI.
 
 ![Image MLX Lab real editing results](images/showcase-overview-en-v1.png)

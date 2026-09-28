@@ -2,7 +2,7 @@
 
 [English](USER_GUIDE_EN.md) | **中文**
 
-> 版本：v0.1 · 2026-09-25  
+> 版本：1.0 · 2026-09-28  
 > 适用界面：当前中文界面
 
 ![Image MLX Lab 真实编辑效果](images/showcase-overview-zh-v1.png)

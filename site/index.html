@@ -24,7 +24,7 @@
 {"@context":"https://schema.org","@graph":[
  {"@type":"SoftwareApplication","name":"Image MLX Lab","url":"https://houjun.dev/iml/",
   "description":"Local AI image generator and editor for Apple Silicon Macs: text to image, image variations, instruction-based editing and mask-based AI inpainting with Qwen-Image on MLX. Everything stays on your computer.",
-  "applicationCategory":"MultimediaApplication","operatingSystem":"macOS on Apple Silicon",
+  "applicationCategory":"MultimediaApplication","operatingSystem":"macOS on Apple Silicon","softwareVersion":"1.0",
   "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/license/mit",
   "codeRepository":"https://github.com/hera2019/image-mlx-lab",
   "inLanguage":["en","zh"],
@@ -61,7 +61,7 @@
     <div class="cta">
       <a class="button" href="https://github.com/hera2019/image-mlx-lab">Get it on GitHub</a>
       <a class="button ghost" href="#examples">See real results</a>
-      <span class="note">Free, open-source code (MIT) · default model for non-commercial use · macOS on Apple Silicon</span>
+      <span class="note">Version 1.0 · free, open-source code (MIT) · default model for non-commercial use · macOS on Apple Silicon</span>
     </div>
   </div>
   <figure class="shot"><img src="media/workbench-ai-local-edit-v1.jpg" width="1600" height="913" alt="The Image MLX Lab workbench: editing tools on the left, a photo with a lasso selection around a red waist bag in the centre, the image library on the right."></figure>
@@ -142,7 +142,7 @@
   <ul class="limits">
     <li>It is not fast. On an M2 Max with 32 GB (8-bit model) a 512×512 image at 20 steps took about 1–1.5 minutes, an AI local edit at 480×640 and 20 steps about 5 minutes, and a True Edit at 1152×640 and 36 steps 11–17 minutes.</li>
     <li>It needs an Apple Silicon Mac. 32 GB of memory is recommended; the 4-bit model needs about 14 GB free while loading, and the 8-bit model on 32 GB usually needs the memory check skipped, with heavy swap.</li>
-    <li>It is a developer install for now: Xcode with its Metal toolchain, a terminal, and 12–20 GB of downloads. There is no signed installer.</li>
+    <li>It is a developer install for now: Xcode with its Metal toolchain, a terminal, and 12–20 GB of downloads. There is no signed installer yet, and the install has so far been verified on the development Mac only; if it fails on yours, please <a href="https://github.com/hera2019/image-mlx-lab/issues">open an issue</a>.</li>
     <li>Edits are not always clean. A mask that stops short leaves the old surface at its edge, and some removals show a seam; check every result before you use it.</li>
     <li>The quantized MLX models are not identical to the official full-precision Qwen-Image-2.1, and the default model is for non-commercial use only.</li>
   </ul>
