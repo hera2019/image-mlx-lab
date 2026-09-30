@@ -75,6 +75,10 @@ Image MLX Lab 就是为那些不想交给在线服务的图片做的：家人的
 
 详见 [NOTICE](NOTICE) 和 <https://houjun.dev/iml/license.html>。
 
+## 定制开发
+
+Houjun Co., Ltd. 也承接本地 AI 系统的开发与集成：让图像、语音和语言模型在你自己的硬件上运行。想把 Image MLX Lab 改造进你的产品或工作流程，或做类似的本地 AI 项目，请联系 support@houjun.dev。
+
 ## 需要准备
 
 - Apple Silicon Mac（M1 及以后），建议 32 GB 及以上统一内存。4-bit 加载时约需 14 GB 空闲内存；内存更小的机器需要“跳过内存预检”，会大量使用 swap、明显变慢。

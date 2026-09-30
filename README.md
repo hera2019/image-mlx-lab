@@ -98,6 +98,13 @@ Code and model weights have different licenses:
 
 See [NOTICE](NOTICE) and <https://houjun.dev/iml/license.html>.
 
+## Custom work
+
+Houjun Co., Ltd. also builds and integrates local AI systems — image, speech
+and language models running on your own hardware. For help adapting Image MLX
+Lab to your product or workflow, or for a similar on-device project, contact
+support@houjun.dev.
+
 ## Requirements
 
 - Apple Silicon Mac (M1 or later). 32 GB+ unified memory is recommended.
